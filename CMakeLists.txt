@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.13.4)
-set(CMAKE_C_COMPILER clang)
-set(CMAKE_CXX_COMPILER clang++)
+set(CMAKE_C_COMPILER clang-16)
+set(CMAKE_CXX_COMPILER clang++-16)
 
 add_compile_options("-Wno-ambiguous-reversed-operator")
 add_link_options("-fuse-ld=lld")

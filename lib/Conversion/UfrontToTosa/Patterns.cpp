@@ -21,6 +21,16 @@ void populateConvertUfrontToTosaPatterns(RewritePatternSet& patterns) {
   // clang-format on
 }
 
+SmallVector<int64_t> getIntValueFromArrayAttr(ArrayAttr array) {
+  auto valueIt = [](Attribute attr) {
+    return attr.cast<IntegerAttr>().getInt();
+  };
+
+  auto values = SmallVector<int64_t>{};
+  transform(array, std::back_inserter(values), valueIt);
+  return values;
+}
+
 LogicalResult AddConverter::matchAndRewrite(AddOp add,
                                             PatternRewriter& rewriter) const {
   rewriter.replaceOpWithNewOp<tosa::AddOp>(add, add.getType(), add.getLhs(),
@@ -42,9 +52,8 @@ LogicalResult ReluConverter::matchAndRewrite(ReluOp relu,
 LogicalResult FlatConverter::matchAndRewrite(FlatOp flat,
                                              PatternRewriter& rewriter) const {
   auto shape = flat.getType().getShape();
-  auto attr = rewriter.getI64ArrayAttr(shape);
   rewriter.replaceOpWithNewOp<tosa::ReshapeOp>(flat, flat.getType(),
-                                               flat.getInput(), attr);
+                                               flat.getInput(), shape);
   return success();
 }
 
@@ -59,13 +68,18 @@ LogicalResult Conv2DConverter::matchAndRewrite(
 
   // pad (attribute)
   auto pad = conv.getPadding();
-  auto newPad = rewriter.getArrayAttr({pad[0], pad[0], pad[1], pad[1]});
+  auto padVals = getIntValueFromArrayAttr(pad);
+  auto newPad = rewriter.getDenseI64ArrayAttr(
+      {padVals[0], padVals[0], padVals[1], padVals[1]});
 
   // stride (attribute)
+  // auto stride = conv.getStride().cast<DenseI64ArrayAttr>();
   auto stride = conv.getStride();
+  auto strideVals = getIntValueFromArrayAttr(stride);
+  auto newStride = rewriter.getDenseI64ArrayAttr(strideVals);
 
   // dilation (attribute)
-  auto dilation = rewriter.getI64ArrayAttr({1, 1});
+  auto dilation = rewriter.getDenseI64ArrayAttr({1, 1});
 
   // input (operand)
   auto newInput = transpose(input, {0, 2, 3, 1}, rewriter);
@@ -91,7 +105,7 @@ LogicalResult Conv2DConverter::matchAndRewrite(
                                           outShape[1]};
   auto resType = RankedTensorType::get(resShape, elemTy);
   auto res = rewriter.create<tosa::Conv2DOp>(loc, resType, newInput, weight,
-                                             bias, newPad, stride, dilation);
+                                             bias, newPad, newStride, dilation);
 
   rewriter.replaceOp(conv, transpose(res, {0, 3, 1, 2}, rewriter));
 
@@ -179,18 +193,24 @@ LogicalResult maxPool2D(Pool2DOp pool, PatternRewriter& rewriter) {
   auto stride = pool->getAttrOfType<ArrayAttr>("stride");
   auto padding = pool->getAttrOfType<ArrayAttr>("padding");
 
-  auto tosaPadding =
-      rewriter.getArrayAttr({padding[0], padding[0], padding[1], padding[1]});
+  auto kernelVals = getIntValueFromArrayAttr(kernel);
+  auto strideVals = getIntValueFromArrayAttr(stride);
+  auto paddingVals = getIntValueFromArrayAttr(padding);
+
+  auto kernelAttr = rewriter.getDenseI64ArrayAttr(kernelVals);
+  auto strideAttr = rewriter.getDenseI64ArrayAttr(strideVals);
+  auto padAttr = rewriter.getDenseI64ArrayAttr(
+      {paddingVals[0], paddingVals[0], paddingVals[1], paddingVals[1]});
 
   rewriter.replaceOpWithNewOp<tosa::MaxPool2dOp>(
-      pool, pool.getType(), pool.getInput(), kernel, stride, tosaPadding);
+      pool, pool.getType(), pool.getInput(), kernelAttr, strideAttr, padAttr);
 
   return success();
 }
 
 LogicalResult adaptivePool2D(Pool2DOp pool, PatternRewriter& rewriter) {
-  auto stride = rewriter.getI64ArrayAttr({1, 1});
-  auto padding = rewriter.getI64ArrayAttr({0, 0, 0, 0});
+  auto stride = rewriter.getDenseI64ArrayAttr({1, 1});
+  auto padding = rewriter.getDenseI64ArrayAttr({0, 0, 0, 0});
 
   auto outSizeAttr = pool->getAttrOfType<ArrayAttr>("output_size");
   auto outSizeVals = SmallVector<int64_t, 2>{};
@@ -205,7 +225,7 @@ LogicalResult adaptivePool2D(Pool2DOp pool, PatternRewriter& rewriter) {
   auto kernelVals = SmallVector<int64_t, 2>{};
   kernelVals.emplace_back(oldShape[1] / outSizeVals[0]);
   kernelVals.emplace_back(oldShape[2] / outSizeVals[1]);
-  auto kernel = rewriter.getI64ArrayAttr(kernelVals);
+  auto kernel = rewriter.getDenseI64ArrayAttr(kernelVals);
 
   auto newShape = SmallVector<int64_t>{oldShape};
   newShape[1] = outSizeVals[0];

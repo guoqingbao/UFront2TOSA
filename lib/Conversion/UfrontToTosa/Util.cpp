@@ -83,8 +83,7 @@ Value reshape(Value tensor, ArrayRef<int64_t> dims, OpBuilder& builder) {
   assert(oldProd == newProd && "Invalid new shape\n");
 
   auto newType = RankedTensorType::get(dims, oldType.getElementType());
-  auto dimAttr = builder.getI64ArrayAttr(dims);
-  return builder.create<ReshapeOp>(tensor.getLoc(), newType, tensor, dimAttr);
+  return builder.create<ReshapeOp>(tensor.getLoc(), newType, tensor, dims);
 }
 
 }  // namespace ufront
