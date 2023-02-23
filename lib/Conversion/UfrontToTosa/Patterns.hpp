@@ -1,6 +1,7 @@
 #include "Conversion/UfrontToTosa/UfrontToTosa.hpp"
 #include "Dialect/Ufront/IR/Ufront.hpp"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/Support/LogicalResult.h"
 
 namespace mlir {
 namespace ufront {
@@ -52,6 +53,42 @@ class SoftmaxConverter : public OpRewritePattern<SoftmaxOp> {
 class Pool2DConverter : public OpRewritePattern<Pool2DOp> {
   using OpRewritePattern<Pool2DOp>::OpRewritePattern;
   LogicalResult matchAndRewrite(Pool2DOp pool,
+                                PatternRewriter& rewriter) const override;
+};
+
+class ReshapeConverter : public OpRewritePattern<ReshapeOp> {
+  using OpRewritePattern<ReshapeOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(ReshapeOp reshape,
+                                PatternRewriter& rewriter) const override;
+};
+
+class ConcatConverter : public OpRewritePattern<ConcatOp> {
+  using OpRewritePattern<ConcatOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(ConcatOp concat,
+                                PatternRewriter& rewriter) const override;
+};
+
+class DropoutConverter : public OpRewritePattern<DropoutOp> {
+  using OpRewritePattern<DropoutOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(DropoutOp dropout,
+                                PatternRewriter& rewriter) const override;
+};
+
+class TransposeConverter : public OpRewritePattern<TransposeOp> {
+  using OpRewritePattern<TransposeOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(TransposeOp transpose,
+                                PatternRewriter& rewriter) const override;
+};
+
+class ExpandConverter : public OpRewritePattern<ExpandOp> {
+  using OpRewritePattern<ExpandOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(ExpandOp expand,
+                                PatternRewriter& rewriter) const override;
+};
+
+class GeluConverter : public OpRewritePattern<GeluOp> {
+  using OpRewritePattern<GeluOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(GeluOp gelu,
                                 PatternRewriter& rewriter) const override;
 };
 

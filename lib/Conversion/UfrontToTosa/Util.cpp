@@ -3,6 +3,8 @@
 #include <functional>
 #include <numeric>
 
+#include "mlir/IR/BuiltinAttributes.h"
+
 namespace mlir {
 namespace ufront {
 
@@ -84,6 +86,21 @@ Value reshape(Value tensor, ArrayRef<int64_t> dims, OpBuilder& builder) {
 
   auto newType = RankedTensorType::get(dims, oldType.getElementType());
   return builder.create<ReshapeOp>(tensor.getLoc(), newType, tensor, dims);
+}
+
+DenseElementsAttr getDenseFloatAttr(double value, Type type,
+                                    OpBuilder& builder) {
+  return DenseElementsAttr::get(type, builder.getF32FloatAttr(value));
+}
+
+SmallVector<int64_t> getIntValueFromArrayAttr(ArrayAttr array) {
+  auto valueIt = [](Attribute attr) {
+    return attr.cast<IntegerAttr>().getInt();
+  };
+
+  auto values = SmallVector<int64_t>{};
+  transform(array, std::back_inserter(values), valueIt);
+  return values;
 }
 
 }  // namespace ufront

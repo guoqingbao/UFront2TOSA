@@ -7,6 +7,8 @@ include "mlir/IR/EnumAttr.td"
 def Ufront_Dialect : Dialect {
     let name = "ufront";
     let cppNamespace = "::mlir::ufront";
+
+    let useFoldAPI = kEmitFoldAdaptorFolder;
 }
 
 class Ufront_Op<string mnemonic, list<Trait> traits = []> : Op<Ufront_Dialect, mnemonic, traits>;
@@ -76,12 +78,14 @@ def Ufront_BatchnormOp : Ufront_Op<"batchnorm"> {
 
 def Ufront_LinearOp : Ufront_Op<"linear"> {
     let arguments = (ins
-        Ufront_Tensor2D: $input
+        Ufront_Tensor: $input
     );
 
     let results = (outs
-        Ufront_Tensor2D: $output
+        Ufront_Tensor: $output
     );
+
+    let hasVerifier = 1;
 }
 
 def Ufront_SoftmaxOp : Ufront_Op<"softmax"> {
@@ -116,6 +120,107 @@ def Ufront_ElidedOp : Ufront_Op<"elided"> {
     let builders = [
         OpBuilder<(ins "ArrayRef<int64_t>": $shape, "Type": $element_type)>
     ];
+}
+
+def Ufront_ReshapeOp : Ufront_Op<"reshape"> {
+    let arguments = (ins
+        Ufront_Tensor: $input,
+        I64ArrayAttr: $shape
+    );
+
+    let results = (outs
+        Ufront_Tensor: $output
+    );
+}
+
+def Ufront_TransposeOp : Ufront_Op<"transpose"> {
+    let arguments = (ins
+        Ufront_Tensor: $input,
+        I64ArrayAttr: $perms
+    );
+    
+    let results = (outs
+        Ufront_Tensor: $output
+    );
+}
+
+def Ufront_ExpandOp : Ufront_Op<"expand"> {
+    let arguments = (ins
+        Ufront_Tensor: $input,
+        I64ArrayAttr: $sizes
+    );
+
+    let results = (outs
+        Ufront_Tensor: $output
+    );
+
+    let hasVerifier = 1;
+}
+
+def Ufront_ConcatOp : Ufront_Op<"concat"> {
+    let arguments = (ins
+        Ufront_Tensor: $lhs,
+        Ufront_Tensor: $rhs,
+        I64Attr: $axis
+    );
+
+    let results = (outs
+        Ufront_Tensor: $output
+    );
+}
+
+def Ufront_DropoutOp : Ufront_Op<"dropout"> {
+    let arguments = (ins
+        Ufront_Tensor: $input,
+        F64Attr: $rate,
+        I64Attr: $seed
+    );
+
+    let results = (outs
+        Ufront_Tensor: $output
+    );
+}
+
+def Ufront_GeluOp : Ufront_Op<"gelu"> {
+    let arguments = (ins
+        Ufront_Tensor: $input
+    );
+
+    let results = (outs
+        Ufront_Tensor: $output
+    );
+}
+
+def Ufront_SliceOp : Ufront_Op<"slice"> {
+    let arguments = (ins
+        Ufront_Tensor: $input
+    );
+
+    let results = (outs
+        Ufront_Tensor: $output
+    );
+}
+
+def Ufront_LayerNormOp : Ufront_Op<"layer_norm"> {
+    let arguments = (ins
+        Ufront_Tensor: $input
+    );
+
+    let results = (outs
+        Ufront_Tensor: $output
+    );
+}
+
+def Ufront_MultiheadAttentionOp : Ufront_Op<"multihead_attention"> {
+    let arguments = (ins
+        Ufront_Tensor: $q,
+        Ufront_Tensor: $k,
+        Ufront_Tensor: $v
+    );
+
+    let results = (outs
+        Ufront_Tensor: $output
+    );
 }
 
 #endif // UFRONT_OPS
