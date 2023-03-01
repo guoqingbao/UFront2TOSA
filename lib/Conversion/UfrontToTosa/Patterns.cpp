@@ -1,7 +1,12 @@
 #include "Patterns.hpp"
 
+#include <functional>
+#include <numeric>
+
 #include "Dialect/Ufront/IR/Ufront.hpp"
 #include "Util.hpp"
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/PatternMatch.h"
@@ -15,7 +20,7 @@ void populateConvertUfrontToTosaPatterns(RewritePatternSet& patterns) {
                ReluConverter, 
                FlatConverter, 
                Conv2DConverter,
-               BatchnormConverter, 
+               BatchNormConverter, 
                LinearConverter, 
                SoftmaxConverter,
                Pool2DConverter,
@@ -24,7 +29,14 @@ void populateConvertUfrontToTosaPatterns(RewritePatternSet& patterns) {
                DropoutConverter,
                TransposeConverter,
                ExpandConverter,
-               GeluConverter>(patterns.getContext());
+               GeluConverter,
+               SliceConverter,
+               LayerNormConverter,
+               MultiplyConverter,
+               SigmoidConverter,
+               SiluConverter,
+               HardSigmoidConverter,
+               HardSwishConverter>(patterns.getContext());
   // clang-format on
 }
 
@@ -64,7 +76,7 @@ LogicalResult Conv2DConverter::matchAndRewrite(
   auto elemTy = inTy.getElementType();
 
   // pad (attribute)
-  auto pad = conv.getPadding();
+  auto pad = conv.getPad();
   auto padVals = getIntValueFromArrayAttr(pad);
   auto newPad = rewriter.getDenseI64ArrayAttr(
       {padVals[0], padVals[0], padVals[1], padVals[1]});
@@ -109,30 +121,83 @@ LogicalResult Conv2DConverter::matchAndRewrite(
   return success();
 }
 
+Value norm(Value x, Value mean, Value var, Value eps, Value weight, Value bias,
+           OpBuilder& builder) {
+  auto loc = x.getLoc();
+  auto type = x.getType();
+
+  auto sub = builder.create<tosa::SubOp>(loc, type, x, mean);
+  auto add = builder.create<tosa::AddOp>(loc, type, var, eps);
+  auto rsqrt = builder.create<tosa::RsqrtOp>(loc, type, add);
+  auto shift = builder.getI32IntegerAttr(0);
+  auto mul = builder.create<tosa::MulOp>(loc, type, sub, rsqrt, shift);
+  auto weightProd = builder.create<tosa::MulOp>(loc, type, mul, weight, shift);
+  return builder.create<tosa::AddOp>(loc, type, weightProd, bias);
+}
+
+Optional<Value> meanNCHW(Value tensor, OpBuilder& builder) {
+  constexpr auto RANK = 4;
+  constexpr auto DIMS = std::array<uint64_t, 3>{0, 2, 3};
+
+  auto loc = tensor.getLoc();
+  auto type = tensor.getType().cast<ShapedType>();
+  if (type.getRank() != RANK) {
+    tensor.getDefiningOp()->emitError() << "Rank of tensor must be 4\n";
+    return std::nullopt;
+  }
+
+  auto total = 1UL;
+  auto reduced = tensor;
+  for (auto dim : DIMS) {
+    total *= dim;
+    reduced = reduceSum(reduced, dim, builder);
+  }
+
+  auto attr = getDenseFloatAttr(1.0 / total, type, builder);
+  auto reciprocal = builder.create<tosa::ConstOp>(loc, type, attr);
+
+  auto shift = builder.getI32IntegerAttr(0);
+  return builder.create<tosa::MulOp>(loc, type, reduced, reciprocal, shift);
+}
+
+Optional<Value> normNCHW(Value tensor, OpBuilder& builder) {
+  constexpr auto RANK = 4;
+  constexpr auto EPS = 0.00001;
+  // constexpr auto WEIGHT = 1.0;
+  // constexpr auto BIAS = 0.0;
+
+  auto type = tensor.getType().cast<ShapedType>();
+  if (type.getRank() != RANK) {
+    tensor.getDefiningOp()->emitError() << "Rank of tensor must be 4\n";
+    return std::nullopt;
+  }
+  auto loc = tensor.getLoc();
+
+  auto mean = *meanNCHW(tensor, builder);
+  auto shift = builder.getI32IntegerAttr(0);
+  auto sqr = builder.create<tosa::MulOp>(loc, type, tensor, tensor, shift);
+  // E[x^2]
+  auto meanOfSqr = *meanNCHW(sqr, builder);
+  // E[x]^2
+  auto sqrOfMean = builder.create<tosa::MulOp>(loc, type, mean, mean, shift);
+  auto var = builder.create<tosa::SubOp>(loc, type, meanOfSqr, sqrOfMean);
+
+  auto eps = constant(EPS, type, builder);
+  auto add = builder.create<tosa::AddOp>(loc, type, var, eps);
+  auto rsqrt = builder.create<tosa::RsqrtOp>(loc, type, add);
+  auto sub = builder.create<tosa::SubOp>(loc, type, tensor, mean);
+  return builder.create<tosa::MulOp>(loc, type, sub, rsqrt, shift);
+}
+
 // y = ((x - E(x)) / (Var(x) + epsilon)) * gamma + beta
-// where: E(x) = 0, Var(x) = 1, epsilon = 1e-5, gamma = 1, bata = 0
-LogicalResult BatchnormConverter::matchAndRewrite(
-    BatchnormOp bn, PatternRewriter& rewriter) const {
-  auto loc = bn->getLoc();
-  auto epsilonShape = SmallVector<int64_t, 3>{1, 1, 1};
-  auto epsilonType = RankedTensorType::get(epsilonShape, rewriter.getF32Type());
-  auto epsilonAttr =
-      DenseElementsAttr::get(epsilonType, rewriter.getF32FloatAttr(0.00001));
-  auto epsilon = rewriter.create<tosa::ConstOp>(loc, epsilonType, epsilonAttr);
-
-  auto x = bn.getInput();
-  auto xType = x.getType();
-  auto exAttr = DenseElementsAttr::get(xType, rewriter.getF32FloatAttr(0.0));
-  auto varxAttr = DenseElementsAttr::get(xType, rewriter.getF32FloatAttr(1.0));
-  auto ex = rewriter.create<tosa::ConstOp>(loc, xType, exAttr);
-  auto varx = rewriter.create<tosa::ConstOp>(loc, xType, varxAttr);
-
-  auto sub = rewriter.create<tosa::SubOp>(loc, xType, x, ex);
-  auto add = rewriter.create<tosa::AddOp>(loc, xType, varx, epsilon);
-  auto rsqrt = rewriter.create<tosa::RsqrtOp>(loc, xType, add);
-
-  auto shift = rewriter.getI32IntegerAttr(0);
-  rewriter.replaceOpWithNewOp<tosa::MulOp>(bn, xType, sub, rsqrt, shift);
+// where: E(x) = 0, Var(x) = 1, epsilon = 1e-5, gamma = 1, beta = 0
+LogicalResult BatchNormConverter::matchAndRewrite(
+    BatchNormOp bn, PatternRewriter& rewriter) const {
+  auto norm = normNCHW(bn.getInput(), rewriter);
+  if (!norm) {
+    return failure();
+  }
+  rewriter.replaceOp(bn, *norm);
 
   return success();
 }
@@ -198,7 +263,7 @@ LogicalResult SoftmaxConverter::matchAndRewrite(
 LogicalResult maxPool2D(Pool2DOp pool, PatternRewriter& rewriter) {
   auto kernel = pool->getAttrOfType<ArrayAttr>("kernel");
   auto stride = pool->getAttrOfType<ArrayAttr>("stride");
-  auto padding = pool->getAttrOfType<ArrayAttr>("padding");
+  auto padding = pool->getAttrOfType<ArrayAttr>("pad");
 
   auto kernelVals = getIntValueFromArrayAttr(kernel);
   auto strideVals = getIntValueFromArrayAttr(stride);
@@ -248,8 +313,8 @@ LogicalResult adaptivePool2D(Pool2DOp pool, PatternRewriter& rewriter) {
 }
 
 struct PoolType {
-  constexpr static StringLiteral POOL_MAX = "PoolType.POOL_MAX";
-  constexpr static StringLiteral POOL_ADAPTIVE = "PoolType.POOL_ADAPTIVE";
+  constexpr static StringLiteral POOL_MAX = "POOL_MAX";
+  constexpr static StringLiteral POOL_ADAPTIVE = "POOL_ADAPTIVE";
 };
 
 LogicalResult Pool2DConverter::matchAndRewrite(
@@ -295,6 +360,7 @@ LogicalResult ConcatConverter::matchAndRewrite(
 LogicalResult DropoutConverter::matchAndRewrite(
     DropoutOp dropout, PatternRewriter& rewriter) const {
   auto rate = dropout.getRate();
+  srand(dropout.getSeed());
 
   if (rate.isZero()) {
     rewriter.replaceOp(dropout, dropout.getInput());
@@ -303,8 +369,28 @@ LogicalResult DropoutConverter::matchAndRewrite(
     auto attr = getDenseFloatAttr(1.0, type, rewriter);
     rewriter.replaceOpWithNewOp<tosa::ConstOp>(dropout, type, attr);
   } else {
-    dropout->emitError() << "Unimplemented for rate != 0 && rate != 1\n";
-    return failure();
+    auto type = dropout.getType();
+    auto shape = type.getShape();
+    auto length =
+        reduce(shape.begin(), shape.end(), 1L, std::multiplies<int64_t>());
+
+    auto flags = SmallVector<bool>{};
+    flags.reserve(length);
+    auto range = static_cast<int>(1.0 / rate.convertToDouble());
+
+    for (auto i = 0L; i < length; i++) {
+      flags.emplace_back((rand() % range) != 0);
+    }
+
+    auto loc = dropout->getLoc();
+    auto flagType = RankedTensorType::get(shape, rewriter.getI1Type());
+    auto flagAttr = DenseElementsAttr::get(flagType, flags);
+    auto flagCst = rewriter.create<tosa::ConstOp>(loc, flagType, flagAttr);
+    auto zero = constant(0.0, type, rewriter);
+
+    rewriter.replaceOpWithNewOp<tosa::SelectOp>(dropout, type, flagCst,
+                                                dropout.getInput(), zero);
+    return success();
   }
 
   return success();
@@ -417,6 +503,170 @@ struct GeluHelper {
 LogicalResult GeluConverter::matchAndRewrite(GeluOp gelu,
                                              PatternRewriter& rewriter) const {
   rewriter.replaceOp(gelu, GeluHelper::gelu(gelu.getInput(), rewriter));
+  return success();
+}
+
+LogicalResult SliceConverter::matchAndRewrite(SliceOp op,
+                                              PatternRewriter& rewriter) const {
+  auto offsets = SmallVector<int64_t>{};
+  auto sizes = SmallVector<int64_t>{};
+  auto strides = SmallVector<int64_t>{};
+
+  auto input = op.getInput();
+  auto inTy = input.getType();
+  auto slices = op->getAttr("slices").dyn_cast_or_null<ArrayAttr>();
+  if (!slices) {
+    return failure();
+  }
+
+  for (auto [i, slice] : llvm::enumerate(slices)) {
+    if (auto intAttr = slice.dyn_cast<IntegerAttr>(); intAttr) {
+      offsets.emplace_back(intAttr.getInt());
+      sizes.emplace_back(1);
+      strides.emplace_back(1);
+      continue;
+    }
+
+    auto array = slice.cast<ArrayAttr>();
+    auto valueFn = [array](size_t index, int64_t defaultValue) {
+      if (array.size() <= index || array[index].isa<StringAttr>()) {
+        return defaultValue;
+      }
+      return array[index].cast<IntegerAttr>().getInt();
+    };
+    offsets.emplace_back(valueFn(0, 0));
+    sizes.emplace_back(valueFn(1, inTy.getDimSize(sizes.size())));
+    strides.emplace_back(valueFn(2, 1));
+  }
+
+  while (offsets.size() != static_cast<size_t>(inTy.getRank())) {
+    offsets.emplace_back(0);
+    sizes.emplace_back(inTy.getDimSize(sizes.size()));
+    strides.emplace_back(1);
+  }
+
+  auto outTy = op.getType();
+  rewriter.replaceOpWithNewOp<tensor::ExtractSliceOp>(
+      op, outTy, input, ValueRange{}, ValueRange{}, ValueRange{},
+      rewriter.getDenseI64ArrayAttr(offsets),
+      rewriter.getDenseI64ArrayAttr(sizes),
+      rewriter.getDenseI64ArrayAttr(strides));
+
+  return failure();
+}
+
+LogicalResult LayerNormConverter::matchAndRewrite(
+    LayerNormOp ln, PatternRewriter& rewriter) const {
+  auto x = ln.getInput();
+  auto type = x.getType();
+
+  auto shape = SmallVector<int64_t, 4>{type.getShape()};
+  auto rank = shape.size();
+  while (shape.size() != 4) {
+    shape.insert(shape.begin(), 1);
+  }
+
+  auto nchw = reshape(x, shape, rewriter);
+  auto cnhw = transpose(nchw, {1, 0, 2, 3}, rewriter);
+  auto norm = normNCHW(cnhw, rewriter);
+
+  if (!norm) {
+    return failure();
+  }
+  auto transposed = transpose(*norm, {1, 0, 2, 3}, rewriter);
+  auto transposedShape = transposed.getType().cast<ShapedType>().getShape();
+  rewriter.replaceOp(
+      ln, reshape(transposed, transposedShape.take_back(rank), rewriter));
+  return success();
+}
+
+LogicalResult MultiplyConverter::matchAndRewrite(
+    MultiplyOp multiply, PatternRewriter& rewriter) const {
+  auto lhs = multiply.getLhs();
+  auto rhs = multiply.getRhs();
+  auto type = multiply.getType();
+  auto shift = rewriter.getI32IntegerAttr(0);
+  rewriter.replaceOpWithNewOp<tosa::MulOp>(multiply, type, lhs, rhs, shift);
+  return success();
+}
+
+LogicalResult SigmoidConverter::matchAndRewrite(
+    SigmoidOp sigmoid, PatternRewriter& rewriter) const {
+  auto input = sigmoid.getInput();
+  auto type = sigmoid.getType();
+  rewriter.replaceOpWithNewOp<tosa::SigmoidOp>(sigmoid, type, input);
+  return success();
+}
+
+LogicalResult SiluConverter::matchAndRewrite(SiluOp silu,
+                                             PatternRewriter& rewriter) const {
+  auto loc = silu->getLoc();
+  auto input = silu.getInput();
+  auto type = silu.getType();
+  auto shift = rewriter.getI32IntegerAttr(0);
+
+  auto sigmoid = rewriter.create<tosa::SigmoidOp>(loc, type, input);
+  rewriter.replaceOpWithNewOp<tosa::MulOp>(silu, type, input, sigmoid, shift);
+  return success();
+}
+
+Value hardsigmoidPiecewise(Value x, Value geValue, Value leValue,
+                           Value elseValue, OpBuilder& builder) {
+  constexpr auto UPPER = 3.0;
+  constexpr auto LOWER = -3.0;
+
+  auto type = x.getType().cast<ShapedType>();
+  auto loc = x.getLoc();
+
+  auto upper = constant(UPPER, type, builder);
+  auto lower = constant(LOWER, type, builder);
+
+  auto condType = RankedTensorType::get(type.getShape(), builder.getI1Type());
+  auto ge = builder.create<tosa::GreaterEqualOp>(loc, condType, x, upper);
+  auto le = builder.create<tosa::GreaterEqualOp>(loc, condType, lower, x);
+
+  auto selectLe =
+      builder.create<tosa::SelectOp>(loc, type, le, leValue, elseValue);
+  return builder.create<tosa::SelectOp>(loc, type, ge, geValue, selectLe);
+}
+
+LogicalResult HardSigmoidConverter::matchAndRewrite(
+    HardSigmoidOp hs, PatternRewriter& rewriter) const {
+  auto x = hs.getInput();
+  auto type = hs.getType();
+  auto loc = hs->getLoc();
+
+  auto zero = constant(0.0, type, rewriter);
+  auto one = constant(1.0, type, rewriter);
+
+  auto oneSixth = constant(1.0 / 6.0, type, rewriter);
+  auto oneHalf = constant(0.5, type, rewriter);
+
+  auto shift = rewriter.getI32IntegerAttr(0);
+  auto mul = rewriter.create<tosa::MulOp>(loc, type, x, oneSixth, shift);
+  auto add = rewriter.create<tosa::AddOp>(loc, type, mul, oneHalf);
+
+  rewriter.replaceOp(hs, hardsigmoidPiecewise(x, one, zero, add, rewriter));
+  return success();
+}
+
+LogicalResult HardSwishConverter::matchAndRewrite(
+    HardSwishOp hs, PatternRewriter& rewriter) const {
+  auto x = hs.getInput();
+  auto type = hs.getType();
+  auto loc = hs->getLoc();
+
+  auto three = constant(3.0, type, rewriter);
+
+  auto zero = constant(0.0, type, rewriter);
+  auto oneSixth = constant(1.0 / 6.0, type, rewriter);
+
+  auto shift = rewriter.getI32IntegerAttr(0);
+  auto add = rewriter.create<tosa::AddOp>(loc, type, x, three);
+  auto mul = rewriter.create<tosa::MulOp>(loc, type, add, oneSixth, shift);
+  auto res = rewriter.create<tosa::MulOp>(loc, type, x, mul, shift);
+
+  rewriter.replaceOp(hs, hardsigmoidPiecewise(x, x, zero, res, rewriter));
   return success();
 }
 

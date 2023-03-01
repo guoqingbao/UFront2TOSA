@@ -88,6 +88,11 @@ Value reshape(Value tensor, ArrayRef<int64_t> dims, OpBuilder& builder) {
   return builder.create<ReshapeOp>(tensor.getLoc(), newType, tensor, dims);
 }
 
+Value constant(double value, Type type, OpBuilder& builder) {
+  auto attr = getDenseFloatAttr(value, type, builder);
+  return builder.create<ConstOp>(builder.getUnknownLoc(), type, attr);
+}
+
 DenseElementsAttr getDenseFloatAttr(double value, Type type,
                                     OpBuilder& builder) {
   return DenseElementsAttr::get(type, builder.getF32FloatAttr(value));

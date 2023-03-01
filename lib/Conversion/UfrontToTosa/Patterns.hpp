@@ -32,9 +32,9 @@ class Conv2DConverter : public OpRewritePattern<Conv2DOp> {
                                 PatternRewriter& rewriter) const override;
 };
 
-class BatchnormConverter : public OpRewritePattern<BatchnormOp> {
-  using OpRewritePattern<BatchnormOp>::OpRewritePattern;
-  LogicalResult matchAndRewrite(BatchnormOp bn,
+class BatchNormConverter : public OpRewritePattern<BatchNormOp> {
+  using OpRewritePattern<BatchNormOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(BatchNormOp bn,
                                 PatternRewriter& rewriter) const override;
 };
 
@@ -89,6 +89,48 @@ class ExpandConverter : public OpRewritePattern<ExpandOp> {
 class GeluConverter : public OpRewritePattern<GeluOp> {
   using OpRewritePattern<GeluOp>::OpRewritePattern;
   LogicalResult matchAndRewrite(GeluOp gelu,
+                                PatternRewriter& rewriter) const override;
+};
+
+class SliceConverter : public OpRewritePattern<SliceOp> {
+  using OpRewritePattern<SliceOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(SliceOp slice,
+                                PatternRewriter& rewriter) const override;
+};
+
+class LayerNormConverter : public OpRewritePattern<LayerNormOp> {
+  using OpRewritePattern<LayerNormOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(LayerNormOp ln,
+                                PatternRewriter& rewriter) const override;
+};
+
+class MultiplyConverter : public OpRewritePattern<MultiplyOp> {
+  using OpRewritePattern<MultiplyOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(MultiplyOp multiply,
+                                PatternRewriter& rewriter) const override;
+};
+
+class SigmoidConverter : public OpRewritePattern<SigmoidOp> {
+  using OpRewritePattern<SigmoidOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(SigmoidOp sigmoid,
+                                PatternRewriter& rewriter) const override;
+};
+
+class SiluConverter : public OpRewritePattern<SiluOp> {
+  using OpRewritePattern<SiluOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(SiluOp silu,
+                                PatternRewriter& rewriter) const override;
+};
+
+class HardSigmoidConverter : public OpRewritePattern<HardSigmoidOp> {
+  using OpRewritePattern<HardSigmoidOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(HardSigmoidOp hs,
+                                PatternRewriter& rewriter) const override;
+};
+
+class HardSwishConverter : public OpRewritePattern<HardSwishOp> {
+  using OpRewritePattern<HardSwishOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(HardSwishOp hs,
                                 PatternRewriter& rewriter) const override;
 };
 

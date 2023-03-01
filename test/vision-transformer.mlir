@@ -1,5 +1,5 @@
 func.func @forward(%input1 : tensor<1x3x224x224xf32>, %class_token : tensor<1x1x768xf32>, %encoder.pos_embedding : tensor<1x197x768xf32>) -> tensor<1x1000xf32>  { 
-	%1 = "ufront.conv2d"(%input1) {groups = 1, kernel = [16, 16], padding = [0, 0], stride = [16, 16]} : (tensor<1x3x224x224xf32>) -> tensor<1x768x14x14xf32>
+	%1 = "ufront.conv2d"(%input1) {groups = 1, kernel = [16, 16], pad = [0, 0], stride = [16, 16]} : (tensor<1x3x224x224xf32>) -> tensor<1x768x14x14xf32>
 	%2 = "ufront.reshape"(%1) {shape = [1, 768, 196]} : (tensor<1x768x14x14xf32>) -> tensor<1x768x196xf32>
 	%3 = "ufront.transpose"(%2) {perms = [0, 2, 1]} : (tensor<1x768x196xf32>) -> tensor<1x196x768xf32>
 	%4 = "ufront.expand"(%class_token) {sizes = [1, -1, -1]} : (tensor<1x1x768xf32>) -> tensor<1x1x768xf32>
@@ -139,7 +139,7 @@ func.func @forward(%input1 : tensor<1x3x224x224xf32>, %class_token : tensor<1x1x
 	%138 = "ufront.dropout"(%137) {rate = 0.0, seed = 0} : (tensor<1x768xf32>) -> tensor<1x768xf32>
 	%139 = "ufront.add"(%132, %138) : (tensor<1x197x768xf32>, tensor<1x768xf32>) -> tensor<1x197x768xf32>
 	%140 = "ufront.layer_norm"(%139) : (tensor<1x197x768xf32>) -> tensor<1x197x768xf32>
-	%141 = "ufront.slice"(%140) {output_shape = [1, 768], slices = "(slice(None, None, None), 0)"} : (tensor<1x197x768xf32>) -> tensor<1x768xf32>
+	%141 = "ufront.slice"(%140) {output_shape = [1, 768], slices = [["none", "none", "none"], 0]} : (tensor<1x197x768xf32>) -> tensor<1x768xf32>
 	%142 = "ufront.linear"(%141) : (tensor<1x768xf32>) -> tensor<1x1000xf32>
 	%143 = "ufront.softmax"(%142) : (tensor<1x1000xf32>) -> tensor<1x1000xf32>
 	return %143 : tensor<1x1000xf32>

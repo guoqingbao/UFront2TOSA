@@ -2,7 +2,6 @@
 #define UFRONT_OPS
 
 include "mlir/IR/OpBase.td"
-include "mlir/IR/EnumAttr.td"
 
 def Ufront_Dialect : Dialect {
     let name = "ufront";
@@ -21,10 +20,9 @@ def Ufront_Tensor2D : 2DTensorOf<[Ufront_Float]>;
 def Ufront_Tensor3D : 3DTensorOf<[Ufront_Float]>;
 def Ufront_Tensor4D : 4DTensorOf<[Ufront_Float]>;
 
-def Ufront_AddOp : Ufront_Op<"add"> {
+class Ufront_ActivationOp<string mnemonic, list<Trait> traits = [SameOperandsAndResultShape]> : Ufront_Op<mnemonic, traits> {
     let arguments = (ins
-        Ufront_Tensor: $lhs,
-        Ufront_Tensor: $rhs
+        Ufront_Tensor: $input
     );
 
     let results = (outs
@@ -32,9 +30,10 @@ def Ufront_AddOp : Ufront_Op<"add"> {
     );
 }
 
-def Ufront_ReluOp : Ufront_Op<"relu"> {
+def Ufront_AddOp : Ufront_Op<"add"> {
     let arguments = (ins
-        Ufront_Tensor: $input
+        Ufront_Tensor: $lhs,
+        Ufront_Tensor: $rhs
     );
 
     let results = (outs
@@ -57,7 +56,7 @@ def Ufront_Conv2DOp : Ufront_Op<"conv2d"> {
         Ufront_Tensor4D: $input,
         Ufront_IntArrayAttr2: $kernel,
         Ufront_IntArrayAttr2: $stride,
-        Ufront_IntArrayAttr2: $padding,
+        Ufront_IntArrayAttr2: $pad,
         I64Attr: $groups
     );
 
@@ -66,7 +65,7 @@ def Ufront_Conv2DOp : Ufront_Op<"conv2d"> {
     );
 }
 
-def Ufront_BatchnormOp : Ufront_Op<"batchnorm"> {
+def Ufront_BatchNormOp : Ufront_Op<"batchnorm"> {
     let arguments = (ins
         Ufront_Tensor4D: $input
     );
@@ -87,17 +86,6 @@ def Ufront_LinearOp : Ufront_Op<"linear"> {
 
     let hasVerifier = 1;
 }
-
-def Ufront_SoftmaxOp : Ufront_Op<"softmax"> {
-    let arguments = (ins
-        Ufront_Tensor: $input
-    );
-
-    let results = (outs
-        Ufront_Tensor: $output
-    );
-}
-
 
 def Ufront_Pool2DOp : Ufront_Op<"pool2d"> {
     let arguments = (ins
@@ -181,16 +169,6 @@ def Ufront_DropoutOp : Ufront_Op<"dropout"> {
     );
 }
 
-def Ufront_GeluOp : Ufront_Op<"gelu"> {
-    let arguments = (ins
-        Ufront_Tensor: $input
-    );
-
-    let results = (outs
-        Ufront_Tensor: $output
-    );
-}
-
 def Ufront_SliceOp : Ufront_Op<"slice"> {
     let arguments = (ins
         Ufront_Tensor: $input
@@ -213,14 +191,33 @@ def Ufront_LayerNormOp : Ufront_Op<"layer_norm"> {
 
 def Ufront_MultiheadAttentionOp : Ufront_Op<"multihead_attention"> {
     let arguments = (ins
-        Ufront_Tensor: $q,
-        Ufront_Tensor: $k,
-        Ufront_Tensor: $v
+        Ufront_Tensor: $query,
+        Ufront_Tensor: $key,
+        Ufront_Tensor: $value
     );
 
     let results = (outs
         Ufront_Tensor: $output
     );
 }
+
+def Ufront_MultiplyOp : Ufront_Op<"multiply"> {
+    let arguments = (ins
+        Ufront_Tensor: $lhs,
+        Ufront_Tensor: $rhs
+    );
+
+    let results = (outs
+        Ufront_Tensor: $output
+    );
+}
+
+def Ufront_ReluOp : Ufront_ActivationOp<"relu">;
+def Ufront_SoftmaxOp : Ufront_ActivationOp<"softmax">;
+def Ufront_GeluOp : Ufront_ActivationOp<"gelu">;
+def Ufront_SiluOp : Ufront_ActivationOp<"silu">;
+def Ufront_SigmoidOp : Ufront_ActivationOp<"sigmoid">;
+def Ufront_HardSigmoidOp : Ufront_ActivationOp<"hardsigmoid">;
+def Ufront_HardSwishOp : Ufront_ActivationOp<"hardswish">;
 
 #endif // UFRONT_OPS
