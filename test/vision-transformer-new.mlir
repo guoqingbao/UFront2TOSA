@@ -1,7 +1,7 @@
 func.func @forward(%input1: tensor<1x3x224x224xf32>) -> tensor<1x1000xf32>  { 
   %1 = "ufront.conv2d"(%input1) {groups = 1, kernel = [16, 16], pad = [0, 0], stride = [16, 16]} : (tensor<1x3x224x224xf32>) -> tensor<1x768x14x14xf32>
   %2 = "ufront.reshape"(%1) {shape = [1, 768, 196]} : (tensor<1x768x14x14xf32>) -> tensor<1x768x196xf32>
-  %3 = "ufront.transpose"(%2) {perm = [0, 2, 1]} : (tensor<1x768x196xf32>) -> tensor<1x196x768xf32>
+  %3 = "ufront.transpose"(%2) {perms = [0, 2, 1]} : (tensor<1x768x196xf32>) -> tensor<1x196x768xf32>
   %4 = "ufront.parameter"() {requires_grad = true} : () -> tensor<1x1x768xf32>
   %5 = "ufront.expand"(%4) {sizes = [1, -1, -1]} : (tensor<1x1x768xf32>) -> tensor<1x1x768xf32>
   %6 = "ufront.concat"(%5, %3) {axis = 1} : (tensor<1x1x768xf32>, tensor<1x196x768xf32>) -> tensor<1x197x768xf32>

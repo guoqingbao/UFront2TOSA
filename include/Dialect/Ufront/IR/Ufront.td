@@ -2,6 +2,7 @@
 #define UFRONT_OPS
 
 include "mlir/IR/OpBase.td"
+include "mlir/Interfaces/InferTypeOpInterface.td"
 
 def Ufront_Dialect : Dialect {
     let name = "ufront";
@@ -20,7 +21,7 @@ def Ufront_Tensor2D : 2DTensorOf<[Ufront_Float]>;
 def Ufront_Tensor3D : 3DTensorOf<[Ufront_Float]>;
 def Ufront_Tensor4D : 4DTensorOf<[Ufront_Float]>;
 
-class Ufront_ActivationOp<string mnemonic, list<Trait> traits = [SameOperandsAndResultShape]> : Ufront_Op<mnemonic, traits> {
+class Ufront_ActivationOp<string mnemonic, list<Trait> traits = [SameOperandsAndResultType]> : Ufront_Op<mnemonic, traits> {
     let arguments = (ins
         Ufront_Tensor: $input
     );
@@ -30,7 +31,7 @@ class Ufront_ActivationOp<string mnemonic, list<Trait> traits = [SameOperandsAnd
     );
 }
 
-def Ufront_AddOp : Ufront_Op<"add"> {
+class Ufront_BinaryOp<string mnemonic, list<Trait> traits = []> : Ufront_Op<mnemonic, traits> {
     let arguments = (ins
         Ufront_Tensor: $lhs,
         Ufront_Tensor: $rhs
@@ -98,9 +99,7 @@ def Ufront_Pool2DOp : Ufront_Op<"pool2d"> {
     );
 }
 
-def Ufront_ElidedOp : Ufront_Op<"elided"> {
-    let summary = "Placeholder for `tosa.const` that has elided resource";
-
+def Ufront_ParameterOp : Ufront_Op<"parameter"> {
     let results = (outs
         Ufront_Tensor: $tensor
     );
@@ -191,9 +190,25 @@ def Ufront_LayerNormOp : Ufront_Op<"layer_norm"> {
 
 def Ufront_MultiheadAttentionOp : Ufront_Op<"multihead_attention"> {
     let arguments = (ins
-        Ufront_Tensor: $query,
-        Ufront_Tensor: $key,
-        Ufront_Tensor: $value
+        Ufront_Tensor3D: $query,
+        Ufront_Tensor3D: $key,
+        Ufront_Tensor3D: $value,
+        Optional<Ufront_Tensor3D>: $mask,
+        I64Attr: $embed_dim,
+        I64Attr: $num_heads,
+        F64Attr: $dropout,
+        BoolAttr: $batch_first
+    );
+
+    let results = (outs
+        Ufront_Tensor3D: $output
+    );
+}
+
+def Ufront_StrueDivOp : Ufront_Op<"struediv"> {
+    let arguments = (ins
+        Ufront_Tensor: $input,
+        F64Attr: $scalar
     );
 
     let results = (outs
@@ -201,10 +216,22 @@ def Ufront_MultiheadAttentionOp : Ufront_Op<"multihead_attention"> {
     );
 }
 
-def Ufront_MultiplyOp : Ufront_Op<"multiply"> {
+def Ufront_EqOp : Ufront_Op<"eq"> {
     let arguments = (ins
-        Ufront_Tensor: $lhs,
-        Ufront_Tensor: $rhs
+        Ufront_Tensor: $input,
+        F64Attr: $comparator
+    );
+
+    let results = (outs
+        Ufront_Tensor: $output
+    );
+}
+
+def Ufront_MaskedFillOp : Ufront_Op<"masked_fill", [SameOperandsAndResultType]> {
+    let arguments = (ins
+        Ufront_Tensor: $input,
+        Ufront_Tensor: $mask,
+        F64Attr: $value
     );
 
     let results = (outs
@@ -219,5 +246,9 @@ def Ufront_SiluOp : Ufront_ActivationOp<"silu">;
 def Ufront_SigmoidOp : Ufront_ActivationOp<"sigmoid">;
 def Ufront_HardSigmoidOp : Ufront_ActivationOp<"hardsigmoid">;
 def Ufront_HardSwishOp : Ufront_ActivationOp<"hardswish">;
+
+def Ufront_AddOp : Ufront_BinaryOp<"add">;
+def Ufront_MultiplyOp : Ufront_BinaryOp<"multiply">;
+def Ufront_BatchMatmulOp : Ufront_BinaryOp<"batch_matmul">;
 
 #endif // UFRONT_OPS

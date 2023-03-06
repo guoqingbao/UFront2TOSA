@@ -2,6 +2,7 @@
 #define UFRONT_DIALECT_HPP
 
 #include "mlir/IR/OpImplementation.h"
+#include "mlir/Interfaces/InferTypeOpInterface.h"
 
 // clang-format off
 #include "mlir/IR/Dialect.h"

@@ -134,5 +134,24 @@ class HardSwishConverter : public OpRewritePattern<HardSwishOp> {
                                 PatternRewriter& rewriter) const override;
 };
 
+class MultiheadAttentionConverter
+    : public OpRewritePattern<MultiheadAttentionOp> {
+  using OpRewritePattern<MultiheadAttentionOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(MultiheadAttentionOp mha,
+                                PatternRewriter& rewriter) const override;
+};
+
+class BatchMatmulConverter : public OpRewritePattern<BatchMatmulOp> {
+  using OpRewritePattern<BatchMatmulOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(BatchMatmulOp bmm,
+                                PatternRewriter& rewriter) const override;
+};
+
+class MaskedFillConverter : public OpRewritePattern<MaskedFillOp> {
+  using OpRewritePattern<MaskedFillOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(MaskedFillOp mf,
+                                PatternRewriter& rewriter) const override;
+};
+
 }  // namespace ufront
 }  // namespace mlir

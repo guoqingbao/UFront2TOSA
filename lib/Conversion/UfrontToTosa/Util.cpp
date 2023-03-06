@@ -93,6 +93,11 @@ Value constant(double value, Type type, OpBuilder& builder) {
   return builder.create<ConstOp>(builder.getUnknownLoc(), type, attr);
 }
 
+Value constantScalar(double value, Type elemTy, OpBuilder& builder) {
+  auto type = RankedTensorType::get({}, elemTy);
+  return constant(value, type, builder);
+}
+
 DenseElementsAttr getDenseFloatAttr(double value, Type type,
                                     OpBuilder& builder) {
   return DenseElementsAttr::get(type, builder.getF32FloatAttr(value));

@@ -16,18 +16,32 @@ void UfrontDialect::initialize() {
       >();
 }
 
-void ElidedOp::build(OpBuilder& builder, OperationState& state,
-                     ArrayRef<int64_t> shape, Type elementType) {
+void ParameterOp::build(OpBuilder& builder, OperationState& state,
+                        ArrayRef<int64_t> shape, Type elementType) {
   auto type = RankedTensorType::get(shape, elementType);
   return build(builder, state, type);
 }
 
 LogicalResult LinearOp::verify() {
   auto inTy = getInput().getType();
+  auto outTy = getType();
 
-  if (inTy.getRank() != 2 && inTy.getRank() != 3) {
-    emitError() << "Inputs of `ufront.linear` must be rank 2 or rank 3\n";
+  if (inTy.getRank() != outTy.getRank()) {
+    emitError() << "Ranks of input and output must be the same\n";
     return failure();
+  }
+
+  auto rank = inTy.getRank();
+  if (rank > 3) {
+    emitError() << "Ranks of input and output must be less or equal than 3\n";
+    return failure();
+  }
+
+  for (auto i = 0; i < rank - 1; i++) {
+    if (inTy.getDimSize(i) != outTy.getDimSize(i)) {
+      emitError() << "Invalid shape\n";
+      return failure();
+    }
   }
 
   return success();
