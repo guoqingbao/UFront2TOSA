@@ -153,5 +153,11 @@ class MaskedFillConverter : public OpRewritePattern<MaskedFillOp> {
                                 PatternRewriter& rewriter) const override;
 };
 
+class ChunkConverter : public OpRewritePattern<ChunkOp> {
+  using OpRewritePattern<ChunkOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(ChunkOp chunk,
+                                PatternRewriter& rewriter) const override;
+};
+
 }  // namespace ufront
 }  // namespace mlir

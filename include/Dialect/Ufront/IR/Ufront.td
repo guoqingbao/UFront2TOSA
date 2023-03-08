@@ -68,7 +68,11 @@ def Ufront_Conv2DOp : Ufront_Op<"conv2d"> {
 
 def Ufront_BatchNormOp : Ufront_Op<"batchnorm"> {
     let arguments = (ins
-        Ufront_Tensor4D: $input
+        Ufront_Tensor4D: $input,
+        BoolAttr: $affine,
+        F64Attr: $eps,
+        F64Attr: $momentum,
+        BoolAttr: $track_running_stats
     );
 
     let results = (outs
@@ -146,8 +150,7 @@ def Ufront_ExpandOp : Ufront_Op<"expand"> {
 
 def Ufront_ConcatOp : Ufront_Op<"concat"> {
     let arguments = (ins
-        Ufront_Tensor: $lhs,
-        Ufront_Tensor: $rhs,
+        Variadic<Ufront_Tensor>: $inputs,
         I64Attr: $axis
     );
 
@@ -180,7 +183,10 @@ def Ufront_SliceOp : Ufront_Op<"slice"> {
 
 def Ufront_LayerNormOp : Ufront_Op<"layer_norm"> {
     let arguments = (ins
-        Ufront_Tensor: $input
+        Ufront_Tensor: $input,
+        BoolAttr: $elementwise_affine,
+        F64Attr: $eps,
+        I64ArrayAttr: $normalized_shape
     );
 
     let results = (outs
@@ -236,6 +242,18 @@ def Ufront_MaskedFillOp : Ufront_Op<"masked_fill", [SameOperandsAndResultType]> 
 
     let results = (outs
         Ufront_Tensor: $output
+    );
+}
+
+def Ufront_ChunkOp : Ufront_Op<"chunk"> {
+    let arguments = (ins
+        Ufront_Tensor: $input,
+        I64Attr: $sizes,
+        I64Attr: $axis
+    );
+
+    let results = (outs
+        Variadic<Ufront_Tensor>: $outputs
     );
 }
 

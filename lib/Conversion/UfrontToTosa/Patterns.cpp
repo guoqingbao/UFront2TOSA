@@ -39,7 +39,8 @@ void populateConvertUfrontToTosaPatterns(RewritePatternSet& patterns) {
                HardSwishConverter,
                BatchMatmulConverter,
                MaskedFillConverter,
-               MultiheadAttentionConverter>(patterns.getContext());
+               MultiheadAttentionConverter,
+               ChunkConverter>(patterns.getContext());
   // clang-format on
 }
 
@@ -128,73 +129,6 @@ Value norm(Value x, Value mean, Value var, Value eps, Value weight, Value bias,
   auto mul = builder.create<tosa::MulOp>(loc, type, sub, rsqrt, shift);
   auto weightProd = builder.create<tosa::MulOp>(loc, type, mul, weight, shift);
   return builder.create<tosa::AddOp>(loc, type, weightProd, bias);
-}
-
-Optional<Value> meanNCHW(Value tensor, OpBuilder& builder) {
-  constexpr auto RANK = 4;
-  constexpr auto DIMS = std::array<uint64_t, 3>{0, 2, 3};
-
-  auto loc = tensor.getLoc();
-  auto type = tensor.getType().cast<ShapedType>();
-  if (type.getRank() != RANK) {
-    tensor.getDefiningOp()->emitError() << "Rank of tensor must be 4\n";
-    return std::nullopt;
-  }
-
-  auto total = 1UL;
-  auto reduced = tensor;
-  for (auto dim : DIMS) {
-    total *= dim;
-    reduced = reduceSum(reduced, dim, builder);
-  }
-
-  auto attr = getDenseFloatAttr(1.0 / total, type, builder);
-  auto reciprocal = builder.create<tosa::ConstOp>(loc, type, attr);
-
-  auto shift = builder.getI32IntegerAttr(0);
-  return builder.create<tosa::MulOp>(loc, type, reduced, reciprocal, shift);
-}
-
-Optional<Value> normNCHW(Value tensor, OpBuilder& builder) {
-  constexpr auto RANK = 4;
-  constexpr auto EPS = 0.00001;
-  // constexpr auto WEIGHT = 1.0;
-  // constexpr auto BIAS = 0.0;
-
-  auto type = tensor.getType().cast<ShapedType>();
-  if (type.getRank() != RANK) {
-    tensor.getDefiningOp()->emitError() << "Rank of tensor must be 4\n";
-    return std::nullopt;
-  }
-  auto loc = tensor.getLoc();
-
-  auto mean = *meanNCHW(tensor, builder);
-  auto shift = builder.getI32IntegerAttr(0);
-  auto sqr = builder.create<tosa::MulOp>(loc, type, tensor, tensor, shift);
-  // E[x^2]
-  auto meanOfSqr = *meanNCHW(sqr, builder);
-  // E[x]^2
-  auto sqrOfMean = builder.create<tosa::MulOp>(loc, type, mean, mean, shift);
-  auto var = builder.create<tosa::SubOp>(loc, type, meanOfSqr, sqrOfMean);
-
-  auto eps = constantScalar(EPS, type.getElementType(), builder);
-  auto add = builder.create<tosa::AddOp>(loc, type, var, eps);
-  auto rsqrt = builder.create<tosa::RsqrtOp>(loc, type, add);
-  auto sub = builder.create<tosa::SubOp>(loc, type, tensor, mean);
-  return builder.create<tosa::MulOp>(loc, type, sub, rsqrt, shift);
-}
-
-// y = ((x - E(x)) / (Var(x) + epsilon)) * gamma + beta
-// where: E(x) = 0, Var(x) = 1, epsilon = 1e-5, gamma = 1, beta = 0
-LogicalResult BatchNormConverter::matchAndRewrite(
-    BatchNormOp bn, PatternRewriter& rewriter) const {
-  auto norm = normNCHW(bn.getInput(), rewriter);
-  if (!norm) {
-    return failure();
-  }
-  rewriter.replaceOp(bn, *norm);
-
-  return success();
 }
 
 LogicalResult LinearConverter::matchAndRewrite(
@@ -442,31 +376,6 @@ LogicalResult SliceConverter::matchAndRewrite(SliceOp op,
   return failure();
 }
 
-LogicalResult LayerNormConverter::matchAndRewrite(
-    LayerNormOp ln, PatternRewriter& rewriter) const {
-  auto x = ln.getInput();
-  auto type = x.getType();
-
-  auto shape = SmallVector<int64_t, 4>{type.getShape()};
-  auto rank = shape.size();
-  while (shape.size() != 4) {
-    shape.insert(shape.begin(), 1);
-  }
-
-  auto nchw = reshape(x, shape, rewriter);
-  auto cnhw = transpose(nchw, {1, 0, 2, 3}, rewriter);
-  auto norm = normNCHW(cnhw, rewriter);
-
-  if (!norm) {
-    return failure();
-  }
-  auto transposed = transpose(*norm, {1, 0, 2, 3}, rewriter);
-  auto transposedShape = transposed.getType().cast<ShapedType>().getShape();
-  rewriter.replaceOp(
-      ln, reshape(transposed, transposedShape.take_back(rank), rewriter));
-  return success();
-}
-
 LogicalResult MaskedFillConverter::matchAndRewrite(
     MaskedFillOp mf, PatternRewriter& rewriter) const {
   constexpr auto ZERO = 0.0;
@@ -486,6 +395,40 @@ LogicalResult MaskedFillConverter::matchAndRewrite(
 
   rewriter.replaceOpWithNewOp<tosa::SelectOp>(mf, type, cond, valueTensor,
                                               mf.getInput());
+  return success();
+}
+
+LogicalResult ChunkConverter::matchAndRewrite(ChunkOp chunk,
+                                              PatternRewriter& rewriter) const {
+  auto axis = chunk.getAxis();
+  auto input = chunk.getInput();
+  auto inTy = input.getType();
+
+  auto offsets = SmallVector<int64_t>{};
+  auto sizes = SmallVector<int64_t>{};
+  auto strides = SmallVector<int64_t>{};
+
+  for (auto i : llvm::seq(0L, inTy.getRank())) {
+    offsets.emplace_back(0);
+    sizes.emplace_back(inTy.getDimSize(i));
+    strides.emplace_back(1);
+  }
+
+  auto types = chunk->getResultTypes();
+  auto results = SmallVector<Value>{};
+
+  for (auto type : types) {
+    sizes[axis] = type.cast<ShapedType>().getDimSize(axis);
+    auto slice = rewriter.create<tensor::ExtractSliceOp>(
+        chunk->getLoc(), type, input, ValueRange{}, ValueRange{}, ValueRange{},
+        rewriter.getDenseI64ArrayAttr(offsets),
+        rewriter.getDenseI64ArrayAttr(sizes),
+        rewriter.getDenseI64ArrayAttr(strides));
+    results.emplace_back(slice);
+    offsets[axis] += sizes[axis];
+  }
+
+  rewriter.replaceOp(chunk, results);
   return success();
 }
 
