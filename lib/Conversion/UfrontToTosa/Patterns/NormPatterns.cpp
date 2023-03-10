@@ -149,5 +149,34 @@ LogicalResult LayerNormConverter::matchAndRewrite(
   return success();
 }
 
+LogicalResult MeanConverter::matchAndRewrite(MeanOp op,
+                                             PatternRewriter& rewriter) const {
+  auto input = op.getInput();
+  auto dims = getIntValueFromArrayAttr(op.getDims());
+  auto keepdims = op.getKeepdims();
+
+  auto result = mean(input, dims, rewriter);
+  if (!result) {
+    return failure();
+  }
+
+  if (!keepdims) {
+    auto type = input.getType();
+    auto newShape = SmallVector<int64_t>{};
+
+    for (auto i : llvm::seq(0L, type.getRank())) {
+      if (llvm::find(dims, i) != dims.end()) {
+        continue;
+      }
+      newShape.emplace_back(type.getDimSize(i));
+    }
+
+    result = reshape(*result, newShape, rewriter);
+  }
+
+  rewriter.replaceOp(op, *result);
+  return success();
+}
+
 }  // namespace ufront
 }  // namespace mlir

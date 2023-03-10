@@ -1,6 +1,7 @@
 #ifndef UFRONT_CONVERSION_HPP
 #define UFRONT_CONVERSION_HPP
 
+#include "TestParameterToConst/TestParameterToConst.hpp"
 #include "UfrontToTosa/UfrontToTosa.hpp"
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"
 #include "mlir/IR/DialectRegistry.h"

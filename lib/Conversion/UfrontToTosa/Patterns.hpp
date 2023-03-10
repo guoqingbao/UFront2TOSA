@@ -159,5 +159,11 @@ class ChunkConverter : public OpRewritePattern<ChunkOp> {
                                 PatternRewriter& rewriter) const override;
 };
 
+class MeanConverter : public OpRewritePattern<MeanOp> {
+  using OpRewritePattern<MeanOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(MeanOp mean,
+                                PatternRewriter& rewriter) const override;
+};
+
 }  // namespace ufront
 }  // namespace mlir

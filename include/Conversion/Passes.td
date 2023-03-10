@@ -8,4 +8,9 @@ def ConvertUfrontToTosa : Pass<"convert-ufront-to-tosa"> {
     let dependentDialects = ["mlir::tosa::TosaDialect"];
 }
 
+def TestConvertParameterToConst : Pass<"test-convert-parameter-to-const"> {
+    let constructor = "mlir::ufront::createTestConvertParameterToConst()";
+    let dependentDialects = ["mlir::tosa::TosaDialect"];
+}
+
 #endif // UFRONT_CONVERSION_PASSES

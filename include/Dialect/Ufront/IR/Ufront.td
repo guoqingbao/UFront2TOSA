@@ -257,6 +257,18 @@ def Ufront_ChunkOp : Ufront_Op<"chunk"> {
     );
 }
 
+def Ufront_MeanOp : Ufront_Op<"mean"> {
+    let arguments = (ins
+        Ufront_Tensor: $input,
+        I64ArrayAttr: $dims,
+        BoolAttr: $keepdims
+    );
+
+    let results = (outs
+        Ufront_Tensor: $output
+    );
+}
+
 def Ufront_ReluOp : Ufront_ActivationOp<"relu">;
 def Ufront_SoftmaxOp : Ufront_ActivationOp<"softmax">;
 def Ufront_GeluOp : Ufront_ActivationOp<"gelu">;

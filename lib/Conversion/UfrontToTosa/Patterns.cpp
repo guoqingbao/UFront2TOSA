@@ -40,7 +40,8 @@ void populateConvertUfrontToTosaPatterns(RewritePatternSet& patterns) {
                BatchMatmulConverter,
                MaskedFillConverter,
                MultiheadAttentionConverter,
-               ChunkConverter>(patterns.getContext());
+               ChunkConverter,
+               MeanConverter>(patterns.getContext());
   // clang-format on
 }
 
