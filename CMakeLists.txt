@@ -3,6 +3,7 @@ set(CMAKE_C_COMPILER clang-16)
 set(CMAKE_CXX_COMPILER clang++-16)
 
 add_compile_options("-Wno-ambiguous-reversed-operator")
+add_compile_options("-fexceptions")
 add_link_options("-fuse-ld=lld")
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -32,7 +33,9 @@ include_directories(${LLVM_INCLUDE_DIRS})
 include_directories(${MLIR_INCLUDE_DIRS})
 include_directories(${PROJECT_SOURCE_DIR}/include)
 include_directories(${PROJECT_BINARY_DIR}/include)
+include_directories(${NUMCPP_DIR}/include)
 link_directories(${LLVM_BUILD_LIBRARY_DIR})
+link_directories(/usr/local/lib)
 add_definitions(${LLVM_DEFINITIONS})
 
 add_subdirectory(include)

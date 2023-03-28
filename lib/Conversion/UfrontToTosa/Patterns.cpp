@@ -2,6 +2,7 @@
 
 #include <functional>
 #include <numeric>
+#include <typeindex>
 
 #include "Dialect/Ufront/IR/Ufront.hpp"
 #include "Util.hpp"
@@ -41,7 +42,8 @@ void populateConvertUfrontToTosaPatterns(RewritePatternSet& patterns) {
                MaskedFillConverter,
                MultiheadAttentionConverter,
                ChunkConverter,
-               MeanConverter>(patterns.getContext());
+               MeanConverter,
+               ParameterConverter>(patterns.getContext());
   // clang-format on
 }
 
@@ -88,7 +90,7 @@ LogicalResult Conv2DConverter::matchAndRewrite(
   };
   auto weightShape = SmallVector<int64_t, 4>{
       outShape[1], intVal(kernel[0]), intVal(kernel[1]), inTy.getDimSize(1)};
-  auto weight = rewriter.create<ParameterOp>(loc, weightShape, elemTy);
+  auto weight = rewriter.create<ElidedOp>(loc, weightShape, elemTy);
 
   // bias (operand)
   auto biasShape = SmallVector<int64_t, 1>{outShape[1]};
@@ -142,16 +144,20 @@ LogicalResult LinearConverter::matchAndRewrite(
 
   auto shape = SmallVector<int64_t, 3>{inTy.getDimSize(rank - 1),
                                        outTy.getDimSize(rank - 1)};
-  if (2 == rank) {
+
+  if (rank < 3) {
     shape.insert(shape.begin(), 1);
     auto inShape = SmallVector<int64_t>{inTy.getShape()};
-    inShape.insert(inShape.begin(), 1);
+    while (inShape.size() != 3) {
+      inShape.insert(inShape.begin(), 1);
+    }
     input = reshape(input, inShape, rewriter);
-  } else if (3 == rank) {
-    shape.insert(shape.begin(), inTy.getDimSize(0));
+  } else {
+    shape.insert(shape.begin(), inTy.getShape()[rank - 3]);
+    input = reshape(input, inTy.getShape().take_back(3), rewriter);
   }
 
-  auto weight = rewriter.create<ParameterOp>(linear->getLoc(), shape, elemTy);
+  auto weight = rewriter.create<ElidedOp>(linear->getLoc(), shape, elemTy);
   auto result = matmul(input, weight, rewriter);
   rewriter.replaceOp(linear, reshape(result, outTy.getShape(), rewriter));
   return success();

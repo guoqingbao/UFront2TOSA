@@ -165,5 +165,11 @@ class MeanConverter : public OpRewritePattern<MeanOp> {
                                 PatternRewriter& rewriter) const override;
 };
 
+class ParameterConverter : public OpRewritePattern<ParameterOp> {
+  using OpRewritePattern<ParameterOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(ParameterOp parameter,
+                                PatternRewriter& rewriter) const override;
+};
+
 }  // namespace ufront
 }  // namespace mlir

@@ -88,8 +88,6 @@ def Ufront_LinearOp : Ufront_Op<"linear"> {
     let results = (outs
         Ufront_Tensor: $output
     );
-
-    let hasVerifier = 1;
 }
 
 def Ufront_Pool2DOp : Ufront_Op<"pool2d"> {
@@ -103,7 +101,7 @@ def Ufront_Pool2DOp : Ufront_Op<"pool2d"> {
     );
 }
 
-def Ufront_ParameterOp : Ufront_Op<"parameter"> {
+def Ufront_ElidedOp : Ufront_Op<"elided"> {
     let results = (outs
         Ufront_Tensor: $tensor
     );
@@ -266,6 +264,12 @@ def Ufront_MeanOp : Ufront_Op<"mean"> {
 
     let results = (outs
         Ufront_Tensor: $output
+    );
+}
+
+def Ufront_ParameterOp : Ufront_Op<"parameter"> {
+    let results = (outs
+        Ufront_Tensor: $tensor
     );
 }
 

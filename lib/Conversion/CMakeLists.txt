@@ -1,10 +1,10 @@
 add_subdirectory(UfrontToTosa)
-add_subdirectory(TestParameterToConst)
+add_subdirectory(TestElidedToConst)
 
 add_llvm_library(UfrontConversion 
     Passes.cpp
 
     DEPENDS
     UfrontToTosaConversion
-    TestParameterToConstConversion
+    TestElidedToConstConversion
 )

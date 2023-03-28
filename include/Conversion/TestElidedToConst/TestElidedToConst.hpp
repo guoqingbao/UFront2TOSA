@@ -7,11 +7,11 @@
 namespace mlir {
 namespace ufront {
 
-#define GEN_PASS_DEF_TESTCONVERTPARAMETERTOCONST
-#define GEN_PASS_DECL_TESTCONVERTPARAMETERTOCONST
+#define GEN_PASS_DEF_TESTCONVERTELIDEDTOCONST
+#define GEN_PASS_DECL_TESTCONVERTELIDEDTOCONST
 #include "Conversion/Passes.hpp.inc"
 
-std::unique_ptr<Pass> createTestConvertParameterToConst();
+std::unique_ptr<Pass> createTestConvertElidedToConst();
 
 }  // namespace ufront
 }  // namespace mlir

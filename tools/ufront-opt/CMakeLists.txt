@@ -4,6 +4,7 @@ set(LIBS
         ${dialect_libs}
         ${conversion_libs}
         MLIROptLib
+        cnpy
 )
 
 add_llvm_executable(ufront-opt ufront-opt.cpp)
