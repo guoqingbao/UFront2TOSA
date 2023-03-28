@@ -1,0 +1,8 @@
+[submodule]
+	path = third-party/cnpy
+	url = https://github.com/rogersce/cnpy
+
+[submodule]
+	path = third-party/numcpp
+	url = https://github.com/dpilger26/numcpp
+	

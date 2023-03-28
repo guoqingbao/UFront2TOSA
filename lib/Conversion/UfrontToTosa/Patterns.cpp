@@ -177,8 +177,19 @@ LogicalResult maxPool2D(Pool2DOp pool, PatternRewriter& rewriter) {
   auto padAttr = rewriter.getDenseI64ArrayAttr(
       {paddingVals[0], paddingVals[0], paddingVals[1], paddingVals[1]});
 
-  rewriter.replaceOpWithNewOp<tosa::MaxPool2dOp>(
-      pool, pool.getType(), pool.getInput(), kernelAttr, strideAttr, padAttr);
+  auto input = pool.getInput();
+  auto transposed = transpose(input, {0, 2, 3, 1}, rewriter);
+  auto oldResType = pool.getType();
+  auto oldResShape = oldResType.getShape();
+
+  SmallVector<int64_t> newResShape = {oldResShape[0], oldResShape[2],
+                                      oldResShape[3], oldResShape[1]};
+  auto newResType =
+      RankedTensorType::get(newResShape, oldResType.getElementType());
+
+  auto newRes = rewriter.create<tosa::MaxPool2dOp>(
+      pool->getLoc(), newResType, transposed, kernelAttr, strideAttr, padAttr);
+  rewriter.replaceOp(pool, transpose(newRes, {0, 3, 1, 2}, rewriter));
 
   return success();
 }
