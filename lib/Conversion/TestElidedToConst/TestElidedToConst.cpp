@@ -34,7 +34,7 @@ class ElidedConverter : public OpRewritePattern<ElidedOp> {
                                  std::multiplies<int64_t>());
 
     std::vector<float> values(total);
-    get_uniform_array(values.begin(), values.end(), 0.0, 1.0);
+    get_uniform_array(values.begin(), values.end(), -10.0, 10.0);
 
     // for (auto i = 0L; i < total; i++) {
     //   values.emplace_back(APFloat{nc::random::randN<float>()});

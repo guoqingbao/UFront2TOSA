@@ -31,7 +31,7 @@ LogicalResult ParameterConverter::matchAndRewrite(
   file.close();
 
   auto dtype = param->getAttrOfType<StringAttr>("dtype");
-  if (dtype.str() == "DataType.Float") {
+  if (dtype.str() == "Float") {
     auto load = cnpy::npz_load(filename);
     auto array = load.begin()->second.as_vec<float>();
 
