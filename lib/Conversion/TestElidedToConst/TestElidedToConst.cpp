@@ -1,12 +1,26 @@
 #include "Conversion/TestElidedToConst/TestElidedToConst.hpp"
 
 #include "Dialect/Ufront/IR/Ufront.hpp"
-#include "NumCpp/Random/randN.hpp"
+// #include "NumCpp/Random/randN.hpp"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include <iostream>
+#include <array>
+#include <iterator>
+#include <random>
+#include <algorithm>
 
 namespace mlir {
 namespace ufront {
+
+template< class Iter >
+void get_uniform_array( Iter start, Iter end, float min, float max)
+{
+    static std::random_device rd;    
+    static std::mt19937 mte(rd());  
+    std::uniform_real_distribution<> dist(min, max);
+    std::generate(start, end, [&] () { return dist(mte); });
+}
 
 class ElidedConverter : public OpRewritePattern<ElidedOp> {
   using OpRewritePattern<ElidedOp>::OpRewritePattern;
@@ -19,12 +33,14 @@ class ElidedConverter : public OpRewritePattern<ElidedOp> {
     auto total = std::accumulate(shape.begin(), shape.end(), 1L,
                                  std::multiplies<int64_t>());
 
-    SmallVector<APFloat> values;
-    for (auto i = 0L; i < total; i++) {
-      values.emplace_back(APFloat{nc::random::randN<float>()});
-    }
+    std::vector<float> values(total);
+    get_uniform_array(values.begin(), values.end(), 0.0, 1.0);
 
-    auto attr = DenseElementsAttr::get(type, values);
+    // for (auto i = 0L; i < total; i++) {
+    //   values.emplace_back(APFloat{nc::random::randN<float>()});
+    // }
+
+    auto attr = DenseElementsAttr::get(type, llvm::ArrayRef(values));
     rewriter.replaceOpWithNewOp<tosa::ConstOp>(elided, type, attr);
     return success();
   }
