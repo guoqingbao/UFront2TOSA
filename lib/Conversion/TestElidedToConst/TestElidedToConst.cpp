@@ -9,17 +9,18 @@
 #include <iterator>
 #include <random>
 #include <algorithm>
+#include <math.h>
 
 namespace mlir {
 namespace ufront {
 
 template< class Iter >
-void get_uniform_array( Iter start, Iter end, float min, float max)
+void get_uniform_array( Iter start, Iter end, float min, float max, float scale)
 {
     static std::random_device rd;    
     static std::mt19937 mte(rd());  
-    std::uniform_real_distribution<> dist(min, max);
-    std::generate(start, end, [&] () { return dist(mte); });
+    std::normal_distribution<> dist(min, max);
+    std::generate(start, end, [&] () { return dist(mte) * scale; });
 }
 
 class ElidedConverter : public OpRewritePattern<ElidedOp> {
@@ -34,7 +35,7 @@ class ElidedConverter : public OpRewritePattern<ElidedOp> {
                                  std::multiplies<int64_t>());
 
     std::vector<float> values(total);
-    get_uniform_array(values.begin(), values.end(), -10.0, 10.0);
+    get_uniform_array(values.begin(), values.end(), -1.0, 1.0, sqrtf32(2.0/total));
 
     // for (auto i = 0L; i < total; i++) {
     //   values.emplace_back(APFloat{nc::random::randN<float>()});
