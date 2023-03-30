@@ -91,6 +91,9 @@ LogicalResult Conv2DConverter::matchAndRewrite(
   auto weightShape = SmallVector<int64_t, 4>{
       outShape[1], intVal(kernel[0]), intVal(kernel[1]), inTy.getDimSize(1)};
   auto weight = rewriter.create<ElidedOp>(loc, weightShape, elemTy);
+  weight->setAttr("init", rewriter.getStringAttr("conv2d"));
+  weight->setAttr("conv2d_input_shape",
+                  rewriter.getI64ArrayAttr(inTy.getShape()));
 
   // bias (operand)
   auto biasShape = SmallVector<int64_t, 1>{outShape[1]};
@@ -158,6 +161,10 @@ LogicalResult LinearConverter::matchAndRewrite(
   }
 
   auto weight = rewriter.create<ElidedOp>(linear->getLoc(), shape, elemTy);
+  weight->setAttr("init", rewriter.getStringAttr("linear"));
+  weight->setAttr("linear_output_shape",
+                  rewriter.getI64ArrayAttr(outTy.getShape()));
+
   auto result = matmul(input, weight, rewriter);
   rewriter.replaceOp(linear, reshape(result, outTy.getShape(), rewriter));
   return success();
@@ -194,6 +201,7 @@ LogicalResult maxPool2D(Pool2DOp pool, PatternRewriter& rewriter) {
   return success();
 }
 
+// TODO: refactor
 LogicalResult adaptivePool2D(Pool2DOp pool, PatternRewriter& rewriter) {
   auto stride = rewriter.getDenseI64ArrayAttr({1, 1});
   auto padding = rewriter.getDenseI64ArrayAttr({0, 0, 0, 0});
@@ -226,9 +234,41 @@ LogicalResult adaptivePool2D(Pool2DOp pool, PatternRewriter& rewriter) {
   return success();
 }
 
+LogicalResult avgPool2D(Pool2DOp pool, PatternRewriter& rewriter) {
+  auto kernel = pool->getAttrOfType<ArrayAttr>("kernel");
+  auto stride = pool->getAttrOfType<ArrayAttr>("stride");
+  auto padding = pool->getAttrOfType<ArrayAttr>("pad");
+
+  auto kernelVals = getIntValueFromArrayAttr(kernel);
+  auto strideVals = getIntValueFromArrayAttr(stride);
+  auto paddingVals = getIntValueFromArrayAttr(padding);
+
+  auto kernelAttr = rewriter.getDenseI64ArrayAttr(kernelVals);
+  auto strideAttr = rewriter.getDenseI64ArrayAttr(strideVals);
+  auto padAttr = rewriter.getDenseI64ArrayAttr(
+      {paddingVals[0], paddingVals[0], paddingVals[1], paddingVals[1]});
+
+  auto input = pool.getInput();
+  auto transposed = transpose(input, {0, 2, 3, 1}, rewriter);
+  auto oldResType = pool.getType();
+  auto oldResShape = oldResType.getShape();
+
+  SmallVector<int64_t> newResShape = {oldResShape[0], oldResShape[2],
+                                      oldResShape[3], oldResShape[1]};
+  auto newResType =
+      RankedTensorType::get(newResShape, oldResType.getElementType());
+
+  auto newRes = rewriter.create<tosa::AvgPool2dOp>(
+      pool->getLoc(), newResType, transposed, kernelAttr, strideAttr, padAttr);
+  rewriter.replaceOp(pool, transpose(newRes, {0, 3, 1, 2}, rewriter));
+
+  return success();
+}
+
 struct PoolType {
   constexpr static StringLiteral POOL_MAX = "POOL_MAX";
   constexpr static StringLiteral POOL_ADAPTIVE = "POOL_ADAPTIVE";
+  constexpr static StringLiteral POOL_AVG = "POOL_AVG";
 };
 
 LogicalResult Pool2DConverter::matchAndRewrite(
@@ -239,6 +279,7 @@ LogicalResult Pool2DConverter::matchAndRewrite(
   auto fn = StringSwitch<Fn>(poolType)
                 .Case(PoolType::POOL_MAX, maxPool2D)
                 .Case(PoolType::POOL_ADAPTIVE, adaptivePool2D)
+                .Case(PoolType::POOL_AVG, avgPool2D)
                 .Default(nullptr);
 
   if (!fn) {
