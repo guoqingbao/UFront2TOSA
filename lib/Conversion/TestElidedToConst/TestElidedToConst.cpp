@@ -9,6 +9,7 @@
 #include <functional>
 #include <iostream>
 #include <iterator>
+#include <numeric>
 #include <random>
 
 #include "mlir/IR/PatternMatch.h"
@@ -50,7 +51,10 @@ Value initWeightForConv2D(ElidedOp elided, OpBuilder& builder) {
   auto features = std::accumulate(dims.begin() + 1, dims.end(), 1L,
                                   std::multiplies<int64_t>());
 
-  std::vector<float> values(features);
+  auto shape = type.getShape();
+  auto vecSize = std::accumulate(shape.begin(), shape.end(), 1L,
+                                 std::multiplies<int64_t>());
+  std::vector<float> values(vecSize);
   getNormalArray(values.begin(), values.end(), -1.0, 1.0,
                  sqrtf32(2.0 / features));
 
@@ -77,8 +81,12 @@ Value initWeightForLinear(ElidedOp elided, OpBuilder& builder) {
   auto features = std::accumulate(dims.begin() + 1, dims.end(), 1L,
                                   std::multiplies<int64_t>());
 
+  auto shape = type.getShape();
+  auto vecSize = std::accumulate(shape.begin(), shape.end(), 1L,
+                                 std::multiplies<int64_t>());
+  std::vector<float> values(vecSize);
+
   auto range = sqrtf32(1.0 / features);
-  std::vector<float> values(features);
   getUniformArray(values.begin(), values.end(), -range, range, 1.0);
 
   // TODO: case [batch > 1]

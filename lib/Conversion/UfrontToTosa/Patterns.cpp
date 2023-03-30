@@ -9,6 +9,7 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/PatternMatch.h"
 
@@ -55,8 +56,7 @@ LogicalResult FlatConverter::matchAndRewrite(FlatOp flat,
   return success();
 }
 
-LogicalResult Conv2DConverter::matchAndRewrite(
-    Conv2DOp conv, PatternRewriter& rewriter) const {
+Value lowerToConv2D(Conv2DOp conv, OpBuilder& builder) {
   auto loc = conv->getLoc();
   auto input = conv.getInput();
   auto inTy = input.getType();
@@ -67,20 +67,20 @@ LogicalResult Conv2DConverter::matchAndRewrite(
   // pad (attribute)
   auto pad = conv.getPad();
   auto padVals = getIntValueFromArrayAttr(pad);
-  auto newPad = rewriter.getDenseI64ArrayAttr(
+  auto newPad = builder.getDenseI64ArrayAttr(
       {padVals[0], padVals[0], padVals[1], padVals[1]});
 
   // stride (attribute)
   // auto stride = conv.getStride().cast<DenseI64ArrayAttr>();
   auto stride = conv.getStride();
   auto strideVals = getIntValueFromArrayAttr(stride);
-  auto newStride = rewriter.getDenseI64ArrayAttr(strideVals);
+  auto newStride = builder.getDenseI64ArrayAttr(strideVals);
 
   // dilation (attribute)
-  auto dilation = rewriter.getDenseI64ArrayAttr({1, 1});
+  auto dilation = builder.getDenseI64ArrayAttr({1, 1});
 
   // input (operand)
-  auto newInput = transpose(input, {0, 2, 3, 1}, rewriter);
+  auto newInput = transpose(input, {0, 2, 3, 1}, builder);
 
   // weight (operand)
   auto outShape = outTy.getShape();
@@ -90,35 +90,93 @@ LogicalResult Conv2DConverter::matchAndRewrite(
   };
   auto weightShape = SmallVector<int64_t, 4>{
       outShape[1], intVal(kernel[0]), intVal(kernel[1]), inTy.getDimSize(1)};
-  auto weight = rewriter.create<ElidedOp>(loc, weightShape, elemTy);
-  weight->setAttr("init", rewriter.getStringAttr("conv2d"));
+  auto weight = builder.create<ElidedOp>(loc, weightShape, elemTy);
+  weight->setAttr("init", builder.getStringAttr("conv2d"));
   weight->setAttr("conv2d_output_shape",
-                  rewriter.getI64ArrayAttr(outTy.getShape()));
+                  builder.getI64ArrayAttr(outTy.getShape()));
 
   // bias (operand)
   auto biasShape = SmallVector<int64_t, 1>{outShape[1]};
   auto biasType = RankedTensorType::get(biasShape, elemTy);
-  auto biasAttr = DenseElementsAttr::get(biasType, rewriter.getF32FloatAttr(0));
-  auto bias = rewriter.create<tosa::ConstOp>(loc, biasType, biasAttr);
+  auto biasAttr = DenseElementsAttr::get(biasType, builder.getF32FloatAttr(0));
+  auto bias = builder.create<tosa::ConstOp>(loc, biasType, biasAttr);
 
   // result
   auto resShape = SmallVector<int64_t, 4>{outShape[0], outShape[2], outShape[3],
                                           outShape[1]};
   auto resType = RankedTensorType::get(resShape, elemTy);
 
-  Value res;
+  auto res = builder.create<tosa::Conv2DOp>(loc, resType, newInput, weight,
+                                            bias, newPad, newStride, dilation);
+  return transpose(res, {0, 3, 1, 2}, builder);
+}
 
-  if (auto group = conv.getGroups(); group == 1) {
-    res = rewriter.create<tosa::Conv2DOp>(loc, resType, newInput, weight, bias,
-                                          newPad, newStride, dilation);
-  } else if (group == static_cast<uint64_t>(inTy.getDimSize(1))) {
-    res = rewriter.create<tosa::DepthwiseConv2DOp>(
-        loc, resType, newInput, weight, bias, newPad, newStride, dilation);
+// TODO: refactor
+Value lowerToDepthwiseConv2D(Conv2DOp conv, OpBuilder& builder) {
+  auto loc = conv->getLoc();
+  auto input = conv.getInput();
+  auto inTy = input.getType();
+  auto output = conv.getOutput();
+  auto outTy = output.getType();
+  auto elemTy = inTy.getElementType();
+
+  // pad (attribute)
+  auto pad = conv.getPad();
+  auto padVals = getIntValueFromArrayAttr(pad);
+  auto newPad = builder.getDenseI64ArrayAttr(
+      {padVals[0], padVals[0], padVals[1], padVals[1]});
+
+  // stride (attribute)
+  // auto stride = conv.getStride().cast<DenseI64ArrayAttr>();
+  auto stride = conv.getStride();
+  auto strideVals = getIntValueFromArrayAttr(stride);
+  auto newStride = builder.getDenseI64ArrayAttr(strideVals);
+
+  // dilation (attribute)
+  auto dilation = builder.getDenseI64ArrayAttr({1, 1});
+
+  // input (operand)
+  auto newInput = transpose(input, {0, 2, 3, 1}, builder);
+
+  // weight (operand)
+  auto outShape = outTy.getShape();
+  auto kernel = conv.getKernel();
+  auto intVal = [](Attribute attr) {
+    return attr.cast<IntegerAttr>().getInt();
+  };
+  auto weightShape = SmallVector<int64_t, 4>{
+      intVal(kernel[0]), intVal(kernel[1]), inTy.getDimSize(3), 1};
+  auto weight = builder.create<ElidedOp>(loc, weightShape, elemTy);
+  weight->setAttr("init", builder.getStringAttr("conv2d"));
+  weight->setAttr("conv2d_output_shape",
+                  builder.getI64ArrayAttr(outTy.getShape()));
+
+  // bias (operand)
+  auto biasShape = SmallVector<int64_t, 1>{outShape[1]};
+  auto biasType = RankedTensorType::get(biasShape, elemTy);
+  auto biasAttr = DenseElementsAttr::get(biasType, builder.getF32FloatAttr(0));
+  auto bias = builder.create<tosa::ConstOp>(loc, biasType, biasAttr);
+
+  // result
+  auto resShape = SmallVector<int64_t, 4>{outShape[0], outShape[2], outShape[3],
+                                          outShape[1]};
+  auto resType = RankedTensorType::get(resShape, elemTy);
+
+  auto res = builder.create<tosa::Conv2DOp>(loc, resType, newInput, weight,
+                                            bias, newPad, newStride, dilation);
+  return transpose(res, {0, 3, 1, 2}, builder);
+}
+
+LogicalResult Conv2DConverter::matchAndRewrite(
+    Conv2DOp conv, PatternRewriter& rewriter) const {
+  auto group = conv.getGroups();
+  auto inTy = conv.getInput().getType();
+
+  if (group == static_cast<uint64_t>(inTy.getDimSize(1))) {
+    rewriter.replaceOp(conv, lowerToDepthwiseConv2D(conv, rewriter));
   } else {
-    return failure();
+    rewriter.replaceOp(conv, lowerToConv2D(conv, rewriter));
   }
-
-  rewriter.replaceOp(conv, transpose(res, {0, 3, 1, 2}, rewriter));
 
   return success();
 }
