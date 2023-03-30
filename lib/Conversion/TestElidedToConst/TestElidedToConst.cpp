@@ -2,14 +2,17 @@
 
 #include "Dialect/Ufront/IR/Ufront.hpp"
 // #include "NumCpp/Random/randN.hpp"
-#include "mlir/IR/PatternMatch.h"
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include <iostream>
+#include <math.h>
+
+#include <algorithm>
 #include <array>
+#include <functional>
+#include <iostream>
 #include <iterator>
 #include <random>
-#include <algorithm>
-#include <math.h>
+
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
 namespace ufront {
@@ -32,39 +35,53 @@ void getUniformArray(Iter start, Iter end, float min, float max, float scale) {
 
 Value initWeightForConv2D(ElidedOp elided, OpBuilder& builder) {
   auto type = elided.getType();
-  auto inputShapeAttr = elided->getAttrOfType<ArrayAttr>("conv2d_input_shape");
+  auto outShapeAttr = elided->getAttrOfType<ArrayAttr>("conv2d_output_shape");
 
-  assert(inputShapeAttr && "requires attribute `conv2d_input_shape`");
-  assert(inputShapeAttr.size() == 4 && "`conv2d_input_shape` must be 4D");
+  assert(outShapeAttr && "requires attribute `conv2d_output_shape`");
+  assert(outShapeAttr.size() == 4 && "`conv2d_output_shape` must be 4D");
 
-  // NCHW
-  auto channel = dyn_cast<IntegerAttr>(inputShapeAttr[1]);
-  assert(channel && "dims of `conv2d_input_shape` must be integer");
-  auto inFeatures = channel.getInt();
+  SmallVector<int64_t> dims;
+  for (auto attr : outShapeAttr) {
+    auto intAttr = dyn_cast<IntegerAttr>(attr);
+    assert(intAttr && "dims of `conv2d_output_shape` must be integer");
+    dims.emplace_back(intAttr.getInt());
+  }
 
-  std::vector<float> values(inFeatures);
+  auto features = std::accumulate(dims.begin() + 1, dims.end(), 1L,
+                                  std::multiplies<int64_t>());
+
+  std::vector<float> values(features);
   getNormalArray(values.begin(), values.end(), -1.0, 1.0,
-                 sqrtf32(2.0 / inFeatures));
+                 sqrtf32(2.0 / features));
+
+  // TODO: case [batch > 1]
 
   auto attr = DenseElementsAttr::get(type, llvm::ArrayRef(values));
   return builder.create<tosa::ConstOp>(elided.getLoc(), type, attr);
 }
 
+// TODO: refactor
 Value initWeightForLinear(ElidedOp elided, OpBuilder& builder) {
   auto type = elided.getType();
-  auto outputShapeAttr =
-      elided->getAttrOfType<ArrayAttr>("linear_output_shape");
+  auto outShapeAttr = elided->getAttrOfType<ArrayAttr>("linear_output_shape");
 
-  assert(outputShapeAttr && "requires attribute `linear_output_shape`");
+  assert(outShapeAttr && "requires attribute `linear_output_shape`");
 
-  // channel first
-  auto channel = dyn_cast_or_null<IntegerAttr>(outputShapeAttr[1]);
-  assert(channel && "dims of `linear_output_shape` must be integer");
-  auto outFeatures = channel.getInt();
+  SmallVector<int64_t> dims;
+  for (auto attr : outShapeAttr) {
+    auto intAttr = dyn_cast<IntegerAttr>(attr);
+    assert(intAttr && "dims of `conv2d_output_shape` must be integer");
+    dims.emplace_back(intAttr.getInt());
+  }
 
-  auto range = sqrtf32(1.0 / outFeatures);
-  std::vector<float> values(outFeatures);
+  auto features = std::accumulate(dims.begin() + 1, dims.end(), 1L,
+                                  std::multiplies<int64_t>());
+
+  auto range = sqrtf32(1.0 / features);
+  std::vector<float> values(features);
   getUniformArray(values.begin(), values.end(), -range, range, 1.0);
+
+  // TODO: case [batch > 1]
 
   auto attr = DenseElementsAttr::get(type, llvm::ArrayRef(values));
   return builder.create<tosa::ConstOp>(elided->getLoc(), type, attr);

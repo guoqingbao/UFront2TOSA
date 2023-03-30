@@ -92,8 +92,8 @@ LogicalResult Conv2DConverter::matchAndRewrite(
       outShape[1], intVal(kernel[0]), intVal(kernel[1]), inTy.getDimSize(1)};
   auto weight = rewriter.create<ElidedOp>(loc, weightShape, elemTy);
   weight->setAttr("init", rewriter.getStringAttr("conv2d"));
-  weight->setAttr("conv2d_input_shape",
-                  rewriter.getI64ArrayAttr(inTy.getShape()));
+  weight->setAttr("conv2d_output_shape",
+                  rewriter.getI64ArrayAttr(outTy.getShape()));
 
   // bias (operand)
   auto biasShape = SmallVector<int64_t, 1>{outShape[1]};
