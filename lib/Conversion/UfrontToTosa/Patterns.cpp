@@ -145,7 +145,7 @@ Value lowerToDepthwiseConv2D(Conv2DOp conv, OpBuilder& builder) {
     return attr.cast<IntegerAttr>().getInt();
   };
   auto weightShape = SmallVector<int64_t, 4>{
-      intVal(kernel[0]), intVal(kernel[1]), inTy.getDimSize(3), 1};
+      intVal(kernel[0]), intVal(kernel[1]), inTy.getDimSize(1), 1};
   auto weight = builder.create<ElidedOp>(loc, weightShape, elemTy);
   weight->setAttr("init", builder.getStringAttr("conv2d"));
   weight->setAttr("conv2d_output_shape",
@@ -162,8 +162,8 @@ Value lowerToDepthwiseConv2D(Conv2DOp conv, OpBuilder& builder) {
                                           outShape[1]};
   auto resType = RankedTensorType::get(resShape, elemTy);
 
-  auto res = builder.create<tosa::Conv2DOp>(loc, resType, newInput, weight,
-                                            bias, newPad, newStride, dilation);
+  auto res = builder.create<tosa::DepthwiseConv2DOp>(
+      loc, resType, newInput, weight, bias, newPad, newStride, dilation);
   return transpose(res, {0, 3, 1, 2}, builder);
 }
 
