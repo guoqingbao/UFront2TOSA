@@ -483,14 +483,15 @@ LogicalResult SliceConverter::matchAndRewrite(SliceOp op,
     strides.emplace_back(1);
   }
 
-  auto outTy = op.getType();
-  rewriter.replaceOpWithNewOp<tensor::ExtractSliceOp>(
-      op, outTy, input, ValueRange{}, ValueRange{}, ValueRange{},
+  auto outTy = RankedTensorType::get(sizes, inTy.getElementType());
+  auto extract = rewriter.create<tensor::ExtractSliceOp>(
+      op->getLoc(), outTy, input, ValueRange{}, ValueRange{}, ValueRange{},
       rewriter.getDenseI64ArrayAttr(offsets),
       rewriter.getDenseI64ArrayAttr(sizes),
       rewriter.getDenseI64ArrayAttr(strides));
+  rewriter.replaceOp(op, reshape(extract, op.getType().getShape(), rewriter));
 
-  return failure();
+  return success();
 }
 
 LogicalResult MaskedFillConverter::matchAndRewrite(

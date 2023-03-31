@@ -100,18 +100,6 @@ class ElidedConverter : public OpRewritePattern<ElidedOp> {
 
   LogicalResult matchAndRewrite(ElidedOp elided,
                                 PatternRewriter& rewriter) const override {
-    // constexpr auto MAGICNUM = 0.777;
-    // auto type = elided.getType();
-    // auto shape = type.getShape();
-    // auto total = std::accumulate(shape.begin(), shape.end(), 1L,
-    //                              std::multiplies<int64_t>());
-
-    // std::vector<float> values(total);
-    // get_uniform_array(values.begin(), values.end(), -1.0, 1.0,
-    // sqrtf32(2.0/total));
-
-    // auto attr = DenseElementsAttr::get(type, llvm::ArrayRef(values));
-    // rewriter.replaceOpWithNewOp<tosa::ConstOp>(elided, type, attr);
     auto init = elided->getAttrOfType<StringAttr>("init");
     if (!init) {
       return failure();
