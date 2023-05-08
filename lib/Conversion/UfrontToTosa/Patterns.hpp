@@ -171,5 +171,41 @@ class ParameterConverter : public OpRewritePattern<ParameterOp> {
                                 PatternRewriter& rewriter) const override;
 };
 
+class SmultiplyConverter : public OpRewritePattern<SmultiplyOp> {
+  using OpRewritePattern<SmultiplyOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(SmultiplyOp smultiply,
+                                PatternRewriter& rewriter) const override;
+};
+
+class SaddConverter : public OpRewritePattern<SaddOp> {
+  using OpRewritePattern<SaddOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(SaddOp sadd,
+                                PatternRewriter& rewriter) const override;
+};
+
+class SplitConverter : public OpRewritePattern<SplitOp> {
+  using OpRewritePattern<SplitOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(SplitOp split,
+                                PatternRewriter& rewriter) const override;
+};
+
+class SubtractConverter : public OpRewritePattern<SubtractOp> {
+  using OpRewritePattern<SubtractOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(SubtractOp subtract,
+                                PatternRewriter& rewriter) const override;
+};
+
+class MatmulConverter : public OpRewritePattern<MatmulOp> {
+  using OpRewritePattern<MatmulOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(MatmulOp matmul,
+                                PatternRewriter& rewriter) const override;
+};
+
+class StrueDivConverter : public OpRewritePattern<StrueDivOp> {
+  using OpRewritePattern<StrueDivOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(StrueDivOp matmul,
+                                PatternRewriter& rewriter) const override;
+};
+
 }  // namespace ufront
 }  // namespace mlir

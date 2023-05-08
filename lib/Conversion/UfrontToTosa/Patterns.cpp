@@ -1,17 +1,3 @@
-// Copyright 2023, Enflame Tech. All rights reserved.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-//
 #include "Patterns.hpp"
 
 #include <functional>
@@ -58,7 +44,13 @@ void populateConvertUfrontToTosaPatterns(RewritePatternSet& patterns) {
                MultiheadAttentionConverter,
                ChunkConverter,
                MeanConverter,
-               ParameterConverter>(patterns.getContext());
+               ParameterConverter,
+               SaddConverter,
+               SmultiplyConverter,
+               SplitConverter,
+               SubtractConverter,
+               MatmulConverter,
+               StrueDivConverter>(patterns.getContext());
   // clang-format on
 }
 
@@ -106,8 +98,7 @@ Value lowerToConv2D(Conv2DOp conv, OpBuilder& builder) {
       outShape[1], intVal(kernel[0]), intVal(kernel[1]), inTy.getDimSize(1)};
   auto weight = builder.create<ElidedOp>(loc, weightShape, elemTy);
   weight->setAttr("init", builder.getStringAttr("conv2d"));
-  weight->setAttr("conv2d_output_shape",
-                  builder.getI64ArrayAttr(outTy.getShape()));
+  weight->setAttr("output_shape", builder.getI64ArrayAttr(outTy.getShape()));
 
   // bias (operand)
   auto biasShape = SmallVector<int64_t, 1>{outShape[1]};
@@ -162,8 +153,7 @@ Value lowerToDepthwiseConv2D(Conv2DOp conv, OpBuilder& builder) {
       intVal(kernel[0]), intVal(kernel[1]), inTy.getDimSize(1), 1};
   auto weight = builder.create<ElidedOp>(loc, weightShape, elemTy);
   weight->setAttr("init", builder.getStringAttr("conv2d"));
-  weight->setAttr("conv2d_output_shape",
-                  builder.getI64ArrayAttr(outTy.getShape()));
+  weight->setAttr("output_shape", builder.getI64ArrayAttr(outTy.getShape()));
 
   // bias (operand)
   auto biasShape = SmallVector<int64_t, 1>{outShape[1]};
@@ -234,8 +224,7 @@ LogicalResult LinearConverter::matchAndRewrite(
 
   auto weight = rewriter.create<ElidedOp>(linear->getLoc(), shape, elemTy);
   weight->setAttr("init", rewriter.getStringAttr("linear"));
-  weight->setAttr("linear_output_shape",
-                  rewriter.getI64ArrayAttr(outTy.getShape()));
+  weight->setAttr("output_shape", rewriter.getI64ArrayAttr(outTy.getShape()));
 
   auto result = matmul(input, weight, rewriter);
   rewriter.replaceOp(linear, reshape(result, outTy.getShape(), rewriter));
@@ -458,8 +447,8 @@ LogicalResult ExpandConverter::matchAndRewrite(
   return success();
 }
 
-LogicalResult SliceConverter::matchAndRewrite(SliceOp op,
-                                              PatternRewriter& rewriter) const {
+tensor::ExtractSliceOp processSlicesAttr(SliceOp op,
+                                         PatternRewriter& rewriter) {
   auto offsets = SmallVector<int64_t>{};
   auto sizes = SmallVector<int64_t>{};
   auto strides = SmallVector<int64_t>{};
@@ -467,9 +456,6 @@ LogicalResult SliceConverter::matchAndRewrite(SliceOp op,
   auto input = op.getInput();
   auto inTy = input.getType();
   auto slices = op->getAttr("slices").dyn_cast_or_null<ArrayAttr>();
-  if (!slices) {
-    return failure();
-  }
 
   for (auto [i, slice] : llvm::enumerate(slices)) {
     if (auto intAttr = slice.dyn_cast<IntegerAttr>(); intAttr) {
@@ -503,8 +489,63 @@ LogicalResult SliceConverter::matchAndRewrite(SliceOp op,
       rewriter.getDenseI64ArrayAttr(offsets),
       rewriter.getDenseI64ArrayAttr(sizes),
       rewriter.getDenseI64ArrayAttr(strides));
-  rewriter.replaceOp(op, reshape(extract, op.getType().getShape(), rewriter));
+  return extract;
+}
 
+tensor::ExtractSliceOp processNoSlicesAttr(SliceOp op,
+                                           PatternRewriter& rewriter) {
+  auto axis = op->getAttrOfType<ArrayAttr>("axis");
+  auto end = op->getAttrOfType<ArrayAttr>("end");
+  auto start = op->getAttrOfType<ArrayAttr>("start");
+
+  assert(axis && "requires attribute `axis`");
+  assert(end && "requires attribute `end`");
+  assert(start && "requries attribute `start`");
+  assert(axis.size() == start.size() && axis.size() == end.size() &&
+         "size mismatched");
+
+  using Tri = std::tuple<int64_t, int64_t, int64_t>;
+  DenseMap<int64_t, Tri> map;
+  for (auto [a, e, s] : llvm::zip(axis, end, start)) {
+    auto axisVal = a.dyn_cast<IntegerAttr>().getInt();
+    auto endVal = e.dyn_cast<IntegerAttr>().getInt();
+    auto startVal = s.dyn_cast<IntegerAttr>().getInt();
+    map[axisVal] = std::make_tuple(axisVal, startVal, endVal);
+  }
+
+  auto input = op.getInput();
+  auto type = input.getType();
+  auto rank = type.getRank();
+
+  SmallVector<int64_t> offsets, sizes, strides;
+  for (auto i = 0L; i < rank; ++i) {
+    if (map.find(i) == map.end()) {
+      offsets.emplace_back(0);
+      sizes.emplace_back(type.getDimSize(i));
+      strides.emplace_back(1);
+    } else {
+      auto [_, start, end] = map[i];
+      offsets.emplace_back(start);
+      sizes.emplace_back(end - start);
+      strides.emplace_back(1);
+    }
+  }
+
+  auto outTy = RankedTensorType::get(sizes, type.getElementType());
+  auto extract = rewriter.create<tensor::ExtractSliceOp>(
+      op->getLoc(), outTy, input, ValueRange{}, ValueRange{}, ValueRange{},
+      rewriter.getDenseI64ArrayAttr(offsets),
+      rewriter.getDenseI64ArrayAttr(sizes),
+      rewriter.getDenseI64ArrayAttr(strides));
+  return extract;
+}
+
+LogicalResult SliceConverter::matchAndRewrite(SliceOp op,
+                                              PatternRewriter& rewriter) const {
+  auto slicesAttr = op->getAttr("slices").dyn_cast_or_null<ArrayAttr>();
+  tensor::ExtractSliceOp slice = slicesAttr ? processSlicesAttr(op, rewriter)
+                                            : processNoSlicesAttr(op, rewriter);
+  rewriter.replaceOp(op, reshape(slice, op.getType().getShape(), rewriter));
   return success();
 }
 
@@ -530,12 +571,11 @@ LogicalResult MaskedFillConverter::matchAndRewrite(
   return success();
 }
 
-LogicalResult ChunkConverter::matchAndRewrite(ChunkOp chunk,
-                                              PatternRewriter& rewriter) const {
-  auto axis = chunk.getAxis();
-  auto input = chunk.getInput();
-  auto inTy = input.getType();
+void split(Value input, uint64_t axis, TypeRange types, OpBuilder& builder,
+           SmallVector<Value>& results) {
+  results.reserve(types.size());
 
+  auto inTy = cast<TensorType>(input.getType());
   auto offsets = SmallVector<int64_t>{};
   auto sizes = SmallVector<int64_t>{};
   auto strides = SmallVector<int64_t>{};
@@ -546,21 +586,35 @@ LogicalResult ChunkConverter::matchAndRewrite(ChunkOp chunk,
     strides.emplace_back(1);
   }
 
-  auto types = chunk->getResultTypes();
-  auto results = SmallVector<Value>{};
-
   for (auto type : types) {
     sizes[axis] = type.cast<ShapedType>().getDimSize(axis);
-    auto slice = rewriter.create<tensor::ExtractSliceOp>(
-        chunk->getLoc(), type, input, ValueRange{}, ValueRange{}, ValueRange{},
-        rewriter.getDenseI64ArrayAttr(offsets),
-        rewriter.getDenseI64ArrayAttr(sizes),
-        rewriter.getDenseI64ArrayAttr(strides));
+    auto slice = builder.create<tensor::ExtractSliceOp>(
+        builder.getUnknownLoc(), type, input, ValueRange{}, ValueRange{},
+        ValueRange{}, builder.getDenseI64ArrayAttr(offsets),
+        builder.getDenseI64ArrayAttr(sizes),
+        builder.getDenseI64ArrayAttr(strides));
     results.emplace_back(slice);
     offsets[axis] += sizes[axis];
   }
+}
 
-  rewriter.replaceOp(chunk, results);
+LogicalResult ChunkConverter::matchAndRewrite(ChunkOp op,
+                                              PatternRewriter& rewriter) const {
+  auto axis = op.getAxis();
+  auto input = op.getInput();
+  SmallVector<Value> results;
+  split(input, axis, op.getResultTypes(), rewriter, results);
+  rewriter.replaceOp(op, results);
+  return success();
+}
+
+LogicalResult SplitConverter::matchAndRewrite(SplitOp op,
+                                              PatternRewriter& rewriter) const {
+  auto axis = op.getAxis();
+  auto input = op.getInput();
+  SmallVector<Value> results;
+  split(input, axis, op.getResultTypes(), rewriter, results);
+  rewriter.replaceOp(op, results);
   return success();
 }
 

@@ -135,6 +135,9 @@ LogicalResult LayerNormConverter::matchAndRewrite(
   auto rank = ln.getInput().getType().getRank();
   auto normShape = ln.getNormalizedShape();
   auto dims = SmallVector<int64_t>{};
+  for (auto i = 0U; i < normShape.size(); i++) {
+    dims.emplace_back(rank - 1 - i);
+  }
 
   auto normRes = norm(ln.getInput(), dims, rewriter, eps);
   if (!normRes) {

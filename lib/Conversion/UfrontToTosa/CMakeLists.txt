@@ -7,6 +7,7 @@ add_mlir_conversion_library(UfrontToTosaConversion
     Patterns/MultiheadAttentionPattern.cpp
     Patterns/NormPatterns.cpp
     Patterns/Parameter.cpp
+    Patterns/BinaryScalarPatterns.cpp
 
     DEPENDS
     UfrontConversionIncGen

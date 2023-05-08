@@ -42,6 +42,17 @@ class Ufront_BinaryOp<string mnemonic, list<Trait> traits = []> : Ufront_Op<mnem
     );
 }
 
+class Ufront_BinaryScalarOp<string mnemonic, list<Trait> traits = []> : Ufront_Op<mnemonic, traits> {
+    let arguments = (ins
+        Ufront_Tensor: $input,
+        F64Attr: $scalar
+    );
+
+    let results = (outs
+        Ufront_Tensor: $output
+    );
+}
+
 def Ufront_FlatOp : Ufront_Op<"flat"> {
     let arguments = (ins
         Ufront_Tensor: $input
@@ -209,17 +220,6 @@ def Ufront_MultiheadAttentionOp : Ufront_Op<"multihead_attention"> {
     );
 }
 
-def Ufront_StrueDivOp : Ufront_Op<"struediv"> {
-    let arguments = (ins
-        Ufront_Tensor: $input,
-        F64Attr: $scalar
-    );
-
-    let results = (outs
-        Ufront_Tensor: $output
-    );
-}
-
 def Ufront_EqOp : Ufront_Op<"eq"> {
     let arguments = (ins
         Ufront_Tensor: $input,
@@ -273,6 +273,18 @@ def Ufront_ParameterOp : Ufront_Op<"parameter"> {
     );
 }
 
+def Ufront_SplitOp : Ufront_Op<"split"> {
+    let arguments = (ins
+        Ufront_Tensor: $input,
+        I64ArrayAttr: $sizes,
+        I64Attr: $axis
+    );
+
+    let results = (outs
+        Variadic<Ufront_Tensor>: $outputs
+    );
+}
+
 def Ufront_ReluOp : Ufront_ActivationOp<"relu">;
 def Ufront_SoftmaxOp : Ufront_ActivationOp<"softmax">;
 def Ufront_GeluOp : Ufront_ActivationOp<"gelu">;
@@ -284,5 +296,11 @@ def Ufront_HardSwishOp : Ufront_ActivationOp<"hardswish">;
 def Ufront_AddOp : Ufront_BinaryOp<"add">;
 def Ufront_MultiplyOp : Ufront_BinaryOp<"multiply">;
 def Ufront_BatchMatmulOp : Ufront_BinaryOp<"batch_matmul">;
+def Ufront_SubtractOp : Ufront_BinaryOp<"subtract">;
+def Ufront_MatmulOp : Ufront_BinaryOp<"matmul">;
+
+def Ufront_SaddOp : Ufront_BinaryScalarOp<"sadd">;
+def Ufront_SmultiplyOp : Ufront_BinaryScalarOp<"smultiply">;
+def Ufront_StrueDivOp : Ufront_BinaryScalarOp<"struediv">;
 
 #endif // UFRONT_OPS
