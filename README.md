@@ -1,27 +1,39 @@
 # Ufront to Tosa Converter
 
-## 构建
+## How to build?
 
+### Install tools for building
 ```sh
-docker build . -t ufront
+apt update && apt install -y wget cmake ninja-build gnupg
 ```
 
-## 使用
+### Install openmp
+```sh
+apt install libomp-16-dev
+```
 
+#### Install LLVM/MLIR packages
+```sh
+echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-16 main" >> /etc/apt/sources.list && \
+    echo "deb-src http://apt.llvm.org/jammy/ llvm-toolchain-jammy-16 main" >> /etc/apt/sources.list && \
+    wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add
+
+apt update && apt install -y clang-16 lldb-16 lld-16 libmlir-16-dev mlir-16-tools   
+```
+
+### Build the project
+```sh
+cmake .. -G Ninja -DMLIR_DIR=/usr/lib/llvm-16/lib/cmake/mlir && \
+    ninja && \
+```
+## How to use?
+
+#### Partial lowering
 ```sh
 ufront-opt test/ufront.mlir --convert-ufront-to-tosa
 ```
 
-## WIP
-
-`ufront.elided` 暂时用以替代具有 elided resource 的 `tosa.const`，即
-
-```mlir
-%1 = "ufront.elided"() : () -> tensor<64x7x7x3xf32>
-```
-
-等价于
-
-```mlir
-%1 = "tosa.const"() : {value = dense_resource<__elided__> : tensor<64x7x7x3xf32>} : () -> tensor<64x7x7x3xf32>
+#### Full lowering
+```sh
+ufront-opt test/ufront.mlir --convert-ufront-to-tosa --test-convert-elided-to-const
 ```

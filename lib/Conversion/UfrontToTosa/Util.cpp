@@ -14,11 +14,11 @@ Value transpose(Value tensor, ArrayRef<int64_t> perms, OpBuilder& builder) {
   auto loc = tensor.getLoc();
 
   auto attrs = SmallVector<Attribute>{};
-  auto toAttr = [&](int64_t i) { return builder.getI32IntegerAttr(i); };
+  auto toAttr = [&](int64_t i) { return builder.getI64IntegerAttr(i); };
   transform(perms, std::back_inserter(attrs), toAttr);
 
-  auto permsShape = ArrayRef<int64_t>{static_cast<int64_t>(perms.size())};
-  auto permsType = RankedTensorType::get(permsShape, builder.getI32Type());
+  // auto permsShape = ArrayRef<int64_t>{static_cast<int64_t>(perms.size())};
+  auto permsType = RankedTensorType::get({static_cast<int64_t>(perms.size())}, builder.getI64Type());
   auto permsAttr = DenseElementsAttr::get(permsType, attrs);
   auto permsValue = builder.create<ConstOp>(loc, permsType, permsAttr);
 

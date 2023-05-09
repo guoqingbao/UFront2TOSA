@@ -9,8 +9,8 @@ add_link_options("-fuse-ld=lld")
 
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-# set(CMAKE_BUILD_TYPE "Release")
-set(CMAKE_BUILD_TYPE "Debug")
+set(CMAKE_BUILD_TYPE "Release")
+# set(CMAKE_BUILD_TYPE "Debug")
 
 project(ufront LANGUAGES CXX C)
 set(CMAKE_C_STANDARD 11)
@@ -18,12 +18,13 @@ set(CMAKE_CXX_STANDARD 20)
 
 find_package(MLIR REQUIRED CONFIG)
 
+find_package(OpenMP REQUIRED)
+add_compile_options("-fopenmp")
+add_link_options("-fopenmp")
+
 
 option(USEMKL "use mkl to generate random numbers" OFF)
 if (USEMKL)
-    find_package(OpenMP REQUIRED)
-    add_compile_options("-fopenmp")
-    add_link_options("-fopenmp")
     add_link_options(-lmkl_intel_lp64 -lmkl_core -lmkl_sequential)
 endif()
 
