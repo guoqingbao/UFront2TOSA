@@ -18,10 +18,15 @@ set(CMAKE_CXX_STANDARD 20)
 
 find_package(MLIR REQUIRED CONFIG)
 
-find_package(OpenMP REQUIRED)
-add_compile_options("-fopenmp")
-add_link_options("-fopenmp")
+if(NOT USEOMP)
+    set(USEOMP ON)
+endif()
 
+if (USEOMP)
+    find_package(OpenMP REQUIRED)
+    add_compile_options("-fopenmp")
+    add_link_options("-fopenmp")
+endif()
 
 option(USEMKL "use mkl to generate random numbers" OFF)
 if (USEMKL)

@@ -4,9 +4,11 @@
 #ifdef USEMKL
 #include <mkl/mkl_vsl.h>
 #include <mkl/mkl_vsl_defines.h>
-#include <omp.h>
 #endif
 
+#ifdef USEOMP
+#include <omp.h>
+#endif
 
 #include <algorithm>
 #include <array>
