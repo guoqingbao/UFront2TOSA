@@ -12,6 +12,7 @@ def Ufront_Dialect : Dialect {
 }
 
 class Ufront_Op<string mnemonic, list<Trait> traits = []> : Op<Ufront_Dialect, mnemonic, traits>;
+class Ufront_OpX<string mnemonic, list<Trait> traits = [AttrSizedOperandSegments]> : Op<Ufront_Dialect, mnemonic, traits>;
 
 def Ufront_IntArrayAttr2 : ConfinedAttr<I64ArrayAttr, [ArrayCount<2>]>;
 def Ufront_Float : AnyTypeOf<[F16, F32]>;
@@ -66,6 +67,7 @@ def Ufront_FlatOp : Ufront_Op<"flat"> {
 def Ufront_Conv2DOp : Ufront_Op<"conv2d"> {
     let arguments = (ins
         Ufront_Tensor4D: $input,
+        Optional<Ufront_Tensor4D>: $weight,
         Ufront_IntArrayAttr2: $kernel,
         Ufront_IntArrayAttr2: $stride,
         Ufront_IntArrayAttr2: $pad,
@@ -93,7 +95,8 @@ def Ufront_BatchNormOp : Ufront_Op<"batchnorm"> {
 
 def Ufront_LinearOp : Ufront_Op<"linear"> {
     let arguments = (ins
-        Ufront_Tensor: $input
+        Ufront_Tensor: $input,
+        Optional<Ufront_Tensor>: $weight
     );
 
     let results = (outs
@@ -203,11 +206,15 @@ def Ufront_LayerNormOp : Ufront_Op<"layer_norm"> {
     );
 }
 
-def Ufront_MultiheadAttentionOp : Ufront_Op<"multihead_attention"> {
+def Ufront_MultiheadAttentionOp : Ufront_OpX<"multihead_attention"> {
     let arguments = (ins
         Ufront_Tensor3D: $query,
         Ufront_Tensor3D: $key,
         Ufront_Tensor3D: $value,
+        Optional<Ufront_Tensor2D>: $weightQ,
+        Optional<Ufront_Tensor2D>: $weightK,
+        Optional<Ufront_Tensor2D>: $weightV,
+        Optional<Ufront_Tensor2D>: $weightO,
         Optional<Ufront_Tensor3D>: $mask,
         I64Attr: $embed_dim,
         I64Attr: $num_heads,

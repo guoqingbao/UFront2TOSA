@@ -88,17 +88,7 @@ Value lowerToConv2D(Conv2DOp conv, OpBuilder& builder) {
   // input (operand)
   auto newInput = transpose(input, {0, 2, 3, 1}, builder);
 
-  // weight (operand)
   auto outShape = outTy.getShape();
-  auto kernel = conv.getKernel();
-  auto intVal = [](Attribute attr) {
-    return attr.cast<IntegerAttr>().getInt();
-  };
-  auto weightShape = SmallVector<int64_t, 4>{
-      outShape[1], intVal(kernel[0]), intVal(kernel[1]), inTy.getDimSize(1)};
-  auto weight = builder.create<ElidedOp>(loc, weightShape, elemTy);
-  weight->setAttr("init", builder.getStringAttr("conv2d"));
-  weight->setAttr("output_shape", builder.getI64ArrayAttr(outTy.getShape()));
 
   // bias (operand)
   auto biasShape = SmallVector<int64_t, 1>{outShape[1]};
@@ -111,9 +101,28 @@ Value lowerToConv2D(Conv2DOp conv, OpBuilder& builder) {
                                           outShape[1]};
   auto resType = RankedTensorType::get(resShape, elemTy);
 
-  auto res = builder.create<tosa::Conv2DOp>(loc, resType, newInput, weight,
+  auto weight = conv.getWeight();
+  // weight (operand)
+  if (!weight) {
+    auto kernel = conv.getKernel();
+    auto intVal = [](Attribute attr) {
+      return attr.cast<IntegerAttr>().getInt();
+    };
+    auto weightShape = SmallVector<int64_t, 4>{
+        outShape[1], intVal(kernel[0]), intVal(kernel[1]), inTy.getDimSize(1)};
+
+    auto weight = builder.create<ElidedOp>(loc, weightShape, elemTy);
+    weight->setAttr("init", builder.getStringAttr("conv2d"));
+    weight->setAttr("output_shape", builder.getI64ArrayAttr(outTy.getShape()));
+    auto res = builder.create<tosa::Conv2DOp>(loc, resType, newInput, weight,
                                             bias, newPad, newStride, dilation);
-  return transpose(res, {0, 3, 1, 2}, builder);
+    return transpose(res, {0, 3, 1, 2}, builder);
+  }
+  else {
+    auto res = builder.create<tosa::Conv2DOp>(loc, resType, newInput, weight,
+                                            bias, newPad, newStride, dilation);
+    return transpose(res, {0, 3, 1, 2}, builder);
+  }
 }
 
 // TODO: refactor
@@ -143,17 +152,7 @@ Value lowerToDepthwiseConv2D(Conv2DOp conv, OpBuilder& builder) {
   // input (operand)
   auto newInput = transpose(input, {0, 2, 3, 1}, builder);
 
-  // weight (operand)
   auto outShape = outTy.getShape();
-  auto kernel = conv.getKernel();
-  auto intVal = [](Attribute attr) {
-    return attr.cast<IntegerAttr>().getInt();
-  };
-  auto weightShape = SmallVector<int64_t, 4>{
-      intVal(kernel[0]), intVal(kernel[1]), inTy.getDimSize(1), 1};
-  auto weight = builder.create<ElidedOp>(loc, weightShape, elemTy);
-  weight->setAttr("init", builder.getStringAttr("conv2d"));
-  weight->setAttr("output_shape", builder.getI64ArrayAttr(outTy.getShape()));
 
   // bias (operand)
   auto biasShape = SmallVector<int64_t, 1>{outShape[1]};
@@ -166,9 +165,26 @@ Value lowerToDepthwiseConv2D(Conv2DOp conv, OpBuilder& builder) {
                                           outShape[1]};
   auto resType = RankedTensorType::get(resShape, elemTy);
 
-  auto res = builder.create<tosa::DepthwiseConv2DOp>(
-      loc, resType, newInput, weight, bias, newPad, newStride, dilation);
-  return transpose(res, {0, 3, 1, 2}, builder);
+  // weight (operand)
+  auto weight = conv.getWeight();
+  if (!weight) {
+    auto kernel = conv.getKernel();
+    auto intVal = [](Attribute attr) {
+      return attr.cast<IntegerAttr>().getInt();
+    };
+    auto weightShape = SmallVector<int64_t, 4>{
+        intVal(kernel[0]), intVal(kernel[1]), inTy.getDimSize(1), 1};
+    auto weight = builder.create<ElidedOp>(loc, weightShape, elemTy);
+    weight->setAttr("init", builder.getStringAttr("conv2d"));
+    weight->setAttr("output_shape", builder.getI64ArrayAttr(outTy.getShape()));
+    auto res = builder.create<tosa::DepthwiseConv2DOp>(
+        loc, resType, newInput, weight, bias, newPad, newStride, dilation);
+    return transpose(res, {0, 3, 1, 2}, builder);
+  } else {
+      auto res = builder.create<tosa::DepthwiseConv2DOp>(
+        loc, resType, newInput, weight, bias, newPad, newStride, dilation);
+      return transpose(res, {0, 3, 1, 2}, builder);
+  }
 }
 
 LogicalResult Conv2DConverter::matchAndRewrite(
@@ -222,12 +238,18 @@ LogicalResult LinearConverter::matchAndRewrite(
     input = reshape(input, inTy.getShape().take_back(3), rewriter);
   }
 
-  auto weight = rewriter.create<ElidedOp>(linear->getLoc(), shape, elemTy);
-  weight->setAttr("init", rewriter.getStringAttr("linear"));
-  weight->setAttr("output_shape", rewriter.getI64ArrayAttr(outTy.getShape()));
-
-  auto result = matmul(input, weight, rewriter);
-  rewriter.replaceOp(linear, reshape(result, outTy.getShape(), rewriter));
+  auto weight = linear.getWeight();
+  if (weight) {
+    weight = reshape(weight, shape, rewriter);
+    auto result = matmul(input, weight, rewriter);
+    rewriter.replaceOp(linear, reshape(result, outTy.getShape(), rewriter));
+  } else {
+    auto weight = rewriter.create<ElidedOp>(linear->getLoc(), shape, elemTy);
+    weight->setAttr("init", rewriter.getStringAttr("linear"));
+    weight->setAttr("output_shape", rewriter.getI64ArrayAttr(outTy.getShape()));
+    auto result = matmul(input, weight, rewriter);
+    rewriter.replaceOp(linear, reshape(result, outTy.getShape(), rewriter));
+  }
   return success();
 }
 
