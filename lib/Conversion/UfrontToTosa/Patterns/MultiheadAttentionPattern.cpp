@@ -83,13 +83,14 @@ LogicalResult MultiheadAttentionConverter::matchAndRewrite(
 
   auto qkv = SmallVector<Value>{mha.getQuery(), mha.getKey(), mha.getValue()};
   auto weights = SmallVector<Value>{mha.getWeightQ(), mha.getWeightK(), mha.getWeightV()};
-
+  // auto biases = SmallVector<Value>{mha.getBiasQ(), mha.getBiasK(), mha.getBiasV()};
   auto mask = mha.getMask();
   auto numHeads = static_cast<int64_t>(mha.getNumHeads());
+  Value emptyValue;
 
   for (auto [i, val] : enumerate(qkv)) {
     if (weights[i]) {
-      val = rewriter.create<LinearOp>(val.getLoc(), val.getType(), val, weights[i]);
+      val = rewriter.create<LinearOp>(val.getLoc(), val.getType(), val, weights[i], emptyValue);
     } else {
       val = Helper::linear(val, rewriter);
     }
@@ -112,8 +113,9 @@ LogicalResult MultiheadAttentionConverter::matchAndRewrite(
   auto res = Helper::dot(qkv[0], qkv[1], qkv[2], rewriter, mask);
   res = Helper::reshapeFromBatches(res, numHeads, rewriter);
   auto weight_o = mha.getWeightO();
+  // auto bias_o = mha.getBiasO();
   if (weight_o) {
-    res = rewriter.create<LinearOp>(res.getLoc(), res.getType(), res, weight_o);
+    res = rewriter.create<LinearOp>(res.getLoc(), res.getType(), res, weight_o, weight_o);
   } else {
     res = Helper::linear(res, rewriter);
   }

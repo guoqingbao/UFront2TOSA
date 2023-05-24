@@ -61,6 +61,71 @@ Optional<Value> norm(Value tensor, ArrayRef<int64_t> dims, OpBuilder& builder,
   return builder.create<tosa::MulOp>(loc, type, sub, rsqrt, shift);
 }
 
+
+// %output = tf.FusedBatchNorm(%x, %scale, %offset, %mean, %variance) {epsilon, data_format, is_training}
+
+
+// assert(data_format == 'NHWC')
+// assert(is_training == false)
+
+// %epsilon_const = tosa.CONST() {value={epsilon}}
+
+// %op1 = tosa.SUB(%x, %bmean)
+// %op2 = tosa.ADD(%variance, %epsilon_const)
+// %op3 = tosa.RSQRT(%op2)
+// %op4 = tosa.MUL(%op1, %op3)
+// %op5 = tosa.MUL(%op4, %scale)
+// %output = tosa.ADD(%op5, %offset)
+Optional<Value> batchnorm(OpBuilder& builder, Value tensor, ArrayRef<int64_t> dims, Value weight, Value bias, 
+                     double EPS = 0.00001) {
+  auto loc = tensor.getLoc();
+  auto type = tensor.getType();
+
+  auto shift = builder.getI32IntegerAttr(0);
+  auto square = [&](Value x) {
+    return builder.create<tosa::MulOp>(loc, type, x, x, shift);
+  };
+
+  auto meanX = mean(tensor, dims, builder);
+  if (!meanX) {
+    return std::nullopt;
+  }
+
+  auto meanOfSqrX = mean(square(tensor), dims, builder);
+  if (!meanOfSqrX) {
+    return std::nullopt;
+  }
+
+  auto sqrOfMeanX = square(*meanX);
+  auto varX = builder.create<tosa::SubOp>(loc, type, *meanOfSqrX, sqrOfMeanX);
+
+  auto eps = constantScalar(EPS, getElementTypeOrSelf(type), builder);
+  auto sub = builder.create<tosa::SubOp>(loc, type, tensor, *meanX);
+  auto add = builder.create<tosa::AddOp>(loc, type, varX, eps);
+  auto rsqrt = builder.create<tosa::RsqrtOp>(loc, type, add);
+
+  auto mul = builder.create<tosa::MulOp>(loc, type, sub, rsqrt, shift);
+  auto weightProd = builder.create<tosa::MulOp>(loc, type, mul, weight, shift);
+  return builder.create<tosa::AddOp>(loc, type, weightProd, bias);
+}
+
+Optional<Value> batchnorm_mean_var(OpBuilder& builder, Value tensor, ArrayRef<int64_t> dims, 
+                                  Value weight, Value bias, Value mean, Value variance, double EPS = 0.00001) {
+  auto loc = tensor.getLoc();
+  auto type = tensor.getType();
+
+  auto shift = builder.getI32IntegerAttr(0);
+
+  auto eps = constantScalar(EPS, getElementTypeOrSelf(type), builder);
+  auto sub = builder.create<tosa::SubOp>(loc, type, tensor, mean);
+  auto add = builder.create<tosa::AddOp>(loc, variance.getType(), variance, eps);
+  auto rsqrt = builder.create<tosa::RsqrtOp>(loc, add.getType(), add);
+
+  auto mul = builder.create<tosa::MulOp>(loc, type, sub, rsqrt, shift);
+  auto weightProd = builder.create<tosa::MulOp>(loc, type, mul, weight, shift);
+  return builder.create<tosa::AddOp>(loc, type, weightProd, bias);
+}
+
 Optional<Value> meanNCHW(Value tensor, OpBuilder& builder) {
   constexpr auto RANK = 4;
   constexpr auto DIMS = std::array<int64_t, 3>{0, 2, 3};
@@ -118,8 +183,17 @@ Optional<Value> normNCHW(Value tensor, OpBuilder& builder,
 LogicalResult BatchNormConverter::matchAndRewrite(
     BatchNormOp bn, PatternRewriter& rewriter) const {
   auto eps = bn.getEps().convertToDouble();
+  auto weight = bn.getWeight();
+  auto bias = bn.getBias();
+  auto mean = bn.getMean();
+  auto variance = bn.getVariance();
 
-  auto normRes = norm(bn.getInput(), {0, 2, 3}, rewriter, eps);
+  auto normRes = batchnorm_mean_var(rewriter, bn.getInput(), {0, 2, 3}, weight, bias, mean, variance, eps);
+
+
+  // auto normRes = (mean && variance) ? \
+  //       batchnorm_mean_var(rewriter, bn.getInput(), {0, 2, 3}, weight, bias, mean, variance, eps) : \
+  //       batchnorm(rewriter, bn.getInput(), {0, 2, 3}, weight, bias, eps);
   if (!normRes) {
     return failure();
   }

@@ -120,8 +120,9 @@ Value lowerToConv2D(Conv2DOp conv, OpBuilder& builder) {
   }
   else {
     auto weight1 = transpose(weight, {0, 2, 3, 1}, builder);
+    Value bias1 = conv.getBias();
     auto res = builder.create<tosa::Conv2DOp>(loc, resType, newInput, weight1,
-                                            bias, newPad, newStride, dilation);
+                                            bias1?bias1:bias, newPad, newStride, dilation);
     return transpose(res, {0, 3, 1, 2}, builder);
   }
 }
@@ -203,19 +204,19 @@ LogicalResult Conv2DConverter::matchAndRewrite(
   return success();
 }
 
-Value norm(Value x, Value mean, Value var, Value eps, Value weight, Value bias,
-           OpBuilder& builder) {
-  auto loc = x.getLoc();
-  auto type = x.getType();
+// Value norm(Value x, Value mean, Value var, Value eps, Value weight, Value bias,
+//            OpBuilder& builder) {
+//   auto loc = x.getLoc();
+//   auto type = x.getType();
 
-  auto sub = builder.create<tosa::SubOp>(loc, type, x, mean);
-  auto add = builder.create<tosa::AddOp>(loc, type, var, eps);
-  auto rsqrt = builder.create<tosa::RsqrtOp>(loc, type, add);
-  auto shift = builder.getI32IntegerAttr(0);
-  auto mul = builder.create<tosa::MulOp>(loc, type, sub, rsqrt, shift);
-  auto weightProd = builder.create<tosa::MulOp>(loc, type, mul, weight, shift);
-  return builder.create<tosa::AddOp>(loc, type, weightProd, bias);
-}
+//   auto sub = builder.create<tosa::SubOp>(loc, type, x, mean);
+//   auto add = builder.create<tosa::AddOp>(loc, type, var, eps);
+//   auto rsqrt = builder.create<tosa::RsqrtOp>(loc, type, add);
+//   auto shift = builder.getI32IntegerAttr(0);
+//   auto mul = builder.create<tosa::MulOp>(loc, type, sub, rsqrt, shift);
+//   auto weightProd = builder.create<tosa::MulOp>(loc, type, mul, weight, shift);
+//   return builder.create<tosa::AddOp>(loc, type, weightProd, bias);
+// }
 
 LogicalResult LinearConverter::matchAndRewrite(
     LinearOp linear, PatternRewriter& rewriter) const {
@@ -244,7 +245,13 @@ LogicalResult LinearConverter::matchAndRewrite(
   if (weight) {
     weight = reshape(weight, shape, rewriter);
     auto result = matmul(input, weight, rewriter);
-    rewriter.replaceOp(linear, reshape(result, outTy.getShape(), rewriter));
+    auto bias = linear.getBias();
+    if (bias) {
+      auto biased = rewriter.create<tosa::AddOp>(result.getLoc(), result.getType(), result, bias);
+      rewriter.replaceOp(linear, reshape(biased, outTy.getShape(), rewriter));
+    } else {
+      rewriter.replaceOp(linear, reshape(result, outTy.getShape(), rewriter));
+    }
   } else {
     auto weight = rewriter.create<ElidedOp>(linear->getLoc(), shape, elemTy);
     weight->setAttr("init", rewriter.getStringAttr("linear"));

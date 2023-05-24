@@ -64,10 +64,11 @@ def Ufront_FlatOp : Ufront_Op<"flat"> {
     );
 }
 
-def Ufront_Conv2DOp : Ufront_Op<"conv2d"> {
+def Ufront_Conv2DOp : Ufront_OpX<"conv2d"> {
     let arguments = (ins
         Ufront_Tensor4D: $input,
         Optional<Ufront_Tensor4D>: $weight,
+        Optional<Ufront_Tensor4D>: $bias,
         Ufront_IntArrayAttr2: $kernel,
         Ufront_IntArrayAttr2: $stride,
         Ufront_IntArrayAttr2: $pad,
@@ -79,9 +80,13 @@ def Ufront_Conv2DOp : Ufront_Op<"conv2d"> {
     );
 }
 
-def Ufront_BatchNormOp : Ufront_Op<"batchnorm"> {
+def Ufront_BatchNormOp : Ufront_OpX<"batchnorm"> {
     let arguments = (ins
         Ufront_Tensor4D: $input,
+        Optional<Ufront_Tensor4D>: $weight,
+        Optional<Ufront_Tensor4D>: $bias,
+        Optional<Ufront_Tensor4D>: $mean,
+        Optional<Ufront_Tensor4D>: $variance,
         BoolAttr: $affine,
         F64Attr: $eps,
         F64Attr: $momentum,
@@ -93,10 +98,11 @@ def Ufront_BatchNormOp : Ufront_Op<"batchnorm"> {
     );
 }
 
-def Ufront_LinearOp : Ufront_Op<"linear"> {
+def Ufront_LinearOp : Ufront_OpX<"linear"> {
     let arguments = (ins
         Ufront_Tensor: $input,
-        Optional<Ufront_Tensor>: $weight
+        Optional<Ufront_Tensor>: $weight,
+        Optional<Ufront_Tensor>: $bias
     );
 
     let results = (outs
