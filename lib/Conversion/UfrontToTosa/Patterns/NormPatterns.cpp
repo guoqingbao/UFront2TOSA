@@ -101,8 +101,8 @@ Optional<Value> batchnorm(OpBuilder& builder, Value tensor, ArrayRef<int64_t> di
 
   auto eps = constantScalar(EPS, getElementTypeOrSelf(type), builder);
   auto sub = builder.create<tosa::SubOp>(loc, type, tensor, *meanX);
-  auto add = builder.create<tosa::AddOp>(loc, type, varX, eps);
-  auto rsqrt = builder.create<tosa::RsqrtOp>(loc, type, add);
+  auto add = builder.create<tosa::AddOp>(loc, varX.getType(), varX, eps);
+  auto rsqrt = builder.create<tosa::RsqrtOp>(loc, add.getType(), add);
 
   auto mul = builder.create<tosa::MulOp>(loc, type, sub, rsqrt, shift);
   auto weightProd = builder.create<tosa::MulOp>(loc, type, mul, weight, shift);
@@ -178,6 +178,23 @@ Optional<Value> normNCHW(Value tensor, OpBuilder& builder,
   return builder.create<tosa::MulOp>(loc, type, sub, rsqrt, shift);
 }
 
+LogicalResult batchnorm_option(PatternRewriter& rewriter, BatchNormOp& bn, Value weight, Value bias, Value mean, Value variance, double eps) {
+  if (mean && variance) {
+    auto normRes = batchnorm_mean_var(rewriter, bn.getInput(), {0, 2, 3}, weight, bias, mean, variance, eps);
+    if (normRes) {
+      rewriter.replaceOp(bn, *normRes);
+      return success();
+    }
+  } else {
+    auto normRes = batchnorm(rewriter, bn.getInput(), {0, 2, 3}, weight, bias, eps);
+    if (normRes) {
+      rewriter.replaceOp(bn, *normRes);
+      return success();
+    }
+  }
+  return failure();
+}
+
 // y = ((x - E(x)) / (Var(x) + epsilon)) * gamma + beta
 // where: E(x) = 0, Var(x) = 1, epsilon = 1e-5, gamma = 1, beta = 0
 LogicalResult BatchNormConverter::matchAndRewrite(
@@ -187,19 +204,23 @@ LogicalResult BatchNormConverter::matchAndRewrite(
   auto bias = bn.getBias();
   auto mean = bn.getMean();
   auto variance = bn.getVariance();
+  if (weight && bias) {
+    return batchnorm_option(rewriter, bn, weight, bias, mean, variance, eps);
+  } else {
+    auto outTy = bn.getType();
+    // auto elemTy = outTy.getElementType();
+    auto shape = SmallVector<int64_t, 4>{1, outTy.getDimSize(1), 1, 1};
+    auto newTy = outTy.clone(shape);
 
-  auto normRes = batchnorm_mean_var(rewriter, bn.getInput(), {0, 2, 3}, weight, bias, mean, variance, eps);
+    std::vector<float> values(outTy.getDimSize(1), 1.0);
+    auto attr = DenseElementsAttr::get(newTy, llvm::ArrayRef(values));
+    auto weight1 = rewriter.create<tosa::ConstOp>(bn.getLoc(), newTy, attr);
 
-
-  // auto normRes = (mean && variance) ? \
-  //       batchnorm_mean_var(rewriter, bn.getInput(), {0, 2, 3}, weight, bias, mean, variance, eps) : \
-  //       batchnorm(rewriter, bn.getInput(), {0, 2, 3}, weight, bias, eps);
-  if (!normRes) {
-    return failure();
+    std::vector<float> values1(outTy.getDimSize(1), 0.0);
+    auto attr1 = DenseElementsAttr::get(newTy, llvm::ArrayRef(values1));
+    auto bias1 = rewriter.create<tosa::ConstOp>(bn.getLoc(), newTy, attr1);
+    return batchnorm_option(rewriter, bn, weight1, bias1, mean, variance, eps);
   }
-
-  rewriter.replaceOp(bn, *normRes);
-  return success();
 }
 
 LogicalResult LayerNormConverter::matchAndRewrite(
