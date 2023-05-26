@@ -68,7 +68,7 @@ def Ufront_Conv2DOp : Ufront_OpX<"conv2d"> {
     let arguments = (ins
         Ufront_Tensor4D: $input,
         Optional<Ufront_Tensor4D>: $weight,
-        Optional<Ufront_Tensor4D>: $bias,
+        Optional<Ufront_Tensor>: $bias,
         Ufront_IntArrayAttr2: $kernel,
         Ufront_IntArrayAttr2: $stride,
         Ufront_IntArrayAttr2: $pad,

@@ -243,6 +243,7 @@ LogicalResult LinearConverter::matchAndRewrite(
 
   auto weight = linear.getWeight();
   if (weight) {
+    weight = transpose(weight, {1, 0}, rewriter);
     weight = reshape(weight, shape, rewriter);
     auto result = matmul(input, weight, rewriter);
     auto bias = linear.getBias();
