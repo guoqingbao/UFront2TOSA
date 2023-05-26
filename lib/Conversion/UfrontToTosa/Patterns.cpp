@@ -183,7 +183,7 @@ Value lowerToDepthwiseConv2D(Conv2DOp conv, OpBuilder& builder) {
         loc, resType, newInput, weight, bias, newPad, newStride, dilation);
     return transpose(res, {0, 3, 1, 2}, builder);
   } else {
-      auto weight1 = transpose(weight, {0, 2, 3, 1}, builder);
+      auto weight1 = transpose(weight, {2, 3, 0, 1}, builder);
       auto res = builder.create<tosa::DepthwiseConv2DOp>(
         loc, resType, newInput, weight1, bias, newPad, newStride, dilation);
       return transpose(res, {0, 3, 1, 2}, builder);
