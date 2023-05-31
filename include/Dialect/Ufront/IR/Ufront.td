@@ -175,6 +175,10 @@ def Ufront_ConcatOp : Ufront_Op<"concat"> {
     let results = (outs
         Ufront_Tensor: $output
     );
+
+    let builders = [
+        OpBuilder<(ins "ValueRange": $inputs, "uint64_t": $axis)>
+    ];
 }
 
 def Ufront_DropoutOp : Ufront_Op<"dropout"> {
