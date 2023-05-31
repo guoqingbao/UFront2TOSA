@@ -49,11 +49,18 @@ LogicalResult ParameterConverter::matchAndRewrite(
       // printf("C++ address %s, 100th value %f\n", hex.c_str(), array[100]);
       std::vector<float> vec {array, array + size};
 
-      SmallVector<APFloat> values;
-      transform(vec, std::back_inserter(values),
-                [](float f) { return APFloat{f}; });
+      // SmallVector<APFloat> values;
+      // transform(vec, std::back_inserter(values),
+      //           [](float f) { return APFloat{f}; });
 
-      auto attr = DenseElementsAttr::get(param.getType(), values);
+      auto initialValue = *std::begin(vec);
+      SmallVector<float> values(size, initialValue);
+      #pragma omp parallel for
+      for (int i=0; i<size; i++) {
+          values[i] = vec[i];
+      }
+
+      auto attr = DenseElementsAttr::get(param.getType(), llvm::ArrayRef<float>(values));
       rewriter.replaceOpWithNewOp<tosa::ConstOp>(param, param.getType(), attr);
     }
 
