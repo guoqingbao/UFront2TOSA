@@ -199,9 +199,11 @@ def Ufront_SliceOp : Ufront_Op<"slice"> {
     );
 }
 
-def Ufront_LayerNormOp : Ufront_Op<"layer_norm"> {
+def Ufront_LayerNormOp : Ufront_OpX<"layer_norm"> {
     let arguments = (ins
         Ufront_Tensor: $input,
+        Optional<Ufront_Tensor1D>: $weight,
+        Optional<Ufront_Tensor1D>: $bias,
         BoolAttr: $elementwise_affine,
         F64Attr: $eps,
         I64ArrayAttr: $normalized_shape
@@ -220,7 +222,11 @@ def Ufront_MultiheadAttentionOp : Ufront_OpX<"multihead_attention"> {
         Optional<Ufront_Tensor2D>: $weightQ,
         Optional<Ufront_Tensor2D>: $weightK,
         Optional<Ufront_Tensor2D>: $weightV,
+        Optional<Ufront_Tensor1D>: $biasQ,
+        Optional<Ufront_Tensor1D>: $biasK,
+        Optional<Ufront_Tensor1D>: $biasV,
         Optional<Ufront_Tensor2D>: $weightO,
+        Optional<Ufront_Tensor1D>: $biasO,
         Optional<Ufront_Tensor3D>: $mask,
         I64Attr: $embed_dim,
         I64Attr: $num_heads,
@@ -298,9 +304,20 @@ def Ufront_SplitOp : Ufront_Op<"split"> {
     );
 }
 
+def Ufront_GeluOp : Ufront_Op<"gelu", [SameOperandsAndResultType]> {
+    let arguments = (ins
+        Ufront_Tensor: $input,
+        BoolAttr: $approximate
+    );
+
+    let results = (outs
+        Ufront_Tensor: $output
+    );
+}
+
 def Ufront_ReluOp : Ufront_ActivationOp<"relu">;
 def Ufront_SoftmaxOp : Ufront_ActivationOp<"softmax">;
-def Ufront_GeluOp : Ufront_ActivationOp<"gelu">;
+// def Ufront_GeluOp : Ufront_ActivationOp<"gelu">;
 def Ufront_SiluOp : Ufront_ActivationOp<"silu">;
 def Ufront_SigmoidOp : Ufront_ActivationOp<"sigmoid">;
 def Ufront_HardSigmoidOp : Ufront_ActivationOp<"hardsigmoid">;

@@ -30,7 +30,7 @@ Optional<Value> mean(Value tensor, ArrayRef<int64_t> dims, OpBuilder& builder) {
                                      cst, shift);
 }
 
-Optional<Value> norm(Value tensor, ArrayRef<int64_t> dims, OpBuilder& builder,
+Optional<Value> norm(OpBuilder& builder, Value tensor, ArrayRef<int64_t> dims,
                      double EPS = 0.00001) {
   auto loc = tensor.getLoc();
   auto type = tensor.getType();
@@ -45,20 +45,33 @@ Optional<Value> norm(Value tensor, ArrayRef<int64_t> dims, OpBuilder& builder,
     return std::nullopt;
   }
 
-  auto meanOfSqrX = mean(square(tensor), dims, builder);
-  if (!meanOfSqrX) {
-    return std::nullopt;
-  }
+  auto dif = builder.create<tosa::SubOp>(loc, type, tensor, *meanX);
 
-  auto sqrOfMeanX = square(*meanX);
-  auto varX = builder.create<tosa::SubOp>(loc, type, *meanOfSqrX, sqrOfMeanX);
+  auto variance = mean(square(dif), dims, builder);
+
+  // auto sqrOfMeanX = square(*meanX);
+  // auto varX = builder.create<tosa::SubOp>(loc, type, *meanOfSqrX, sqrOfMeanX);
 
   auto eps = constantScalar(EPS, getElementTypeOrSelf(type), builder);
-  auto sub = builder.create<tosa::SubOp>(loc, type, tensor, *meanX);
-  auto add = builder.create<tosa::AddOp>(loc, type, varX, eps);
+  auto add = builder.create<tosa::AddOp>(loc, type, *variance, eps);
   auto rsqrt = builder.create<tosa::RsqrtOp>(loc, type, add);
 
-  return builder.create<tosa::MulOp>(loc, type, sub, rsqrt, shift);
+  return builder.create<tosa::MulOp>(loc, type, dif, rsqrt, shift);
+}
+
+Optional<Value> norm_weight_bias(OpBuilder& builder, Value tensor, ArrayRef<int64_t> dims, Value weight, Value bias,
+                     double EPS = 0.00001) {
+  auto loc = tensor.getLoc();
+  auto type = tensor.getType();
+  auto shift = builder.getI32IntegerAttr(0);
+
+  auto norm = ufront::norm(builder, tensor, dims, EPS);
+  if (!norm)
+  {
+    return std::nullopt;
+  }
+  auto weightProd = builder.create<tosa::MulOp>(loc, type, *norm, weight, shift);
+  return builder.create<tosa::AddOp>(loc, type, weightProd, bias);
 }
 
 
@@ -76,38 +89,40 @@ Optional<Value> norm(Value tensor, ArrayRef<int64_t> dims, OpBuilder& builder,
 // %op4 = tosa.MUL(%op1, %op3)
 // %op5 = tosa.MUL(%op4, %scale)
 // %output = tosa.ADD(%op5, %offset)
-Optional<Value> batchnorm(OpBuilder& builder, Value tensor, ArrayRef<int64_t> dims, Value weight, Value bias, 
-                     double EPS = 0.00001) {
-  auto loc = tensor.getLoc();
-  auto type = tensor.getType();
+// Optional<Value> batchnorm(OpBuilder& builder, Value tensor, ArrayRef<int64_t> dims, Value weight, Value bias, 
+//                      double EPS = 0.00001) {
+//   auto loc = tensor.getLoc();
+//   auto type = tensor.getType();
 
-  auto shift = builder.getI32IntegerAttr(0);
-  auto square = [&](Value x) {
-    return builder.create<tosa::MulOp>(loc, type, x, x, shift);
-  };
+//   auto shift = builder.getI32IntegerAttr(0);
+//   auto square = [&](Value x) {
+//     return builder.create<tosa::MulOp>(loc, type, x, x, shift);
+//   };
 
-  auto meanX = mean(tensor, dims, builder);
-  if (!meanX) {
-    return std::nullopt;
-  }
+//   auto meanX = mean(tensor, dims, builder);
+//   if (!meanX) {
+//     return std::nullopt;
+//   }
 
-  auto meanOfSqrX = mean(square(tensor), dims, builder);
-  if (!meanOfSqrX) {
-    return std::nullopt;
-  }
+//   auto dif = builder.create<tosa::SubOp>(loc, type, tensor, *meanX);
 
-  auto sqrOfMeanX = square(*meanX);
-  auto varX = builder.create<tosa::SubOp>(loc, type, *meanOfSqrX, sqrOfMeanX);
+//   // auto meanOfSqrX = mean(square(tensor), dims, builder);
+//   // if (!meanOfSqrX) {
+//   //   return std::nullopt;
+//   // }
 
-  auto eps = constantScalar(EPS, getElementTypeOrSelf(type), builder);
-  auto sub = builder.create<tosa::SubOp>(loc, type, tensor, *meanX);
-  auto add = builder.create<tosa::AddOp>(loc, varX.getType(), varX, eps);
-  auto rsqrt = builder.create<tosa::RsqrtOp>(loc, add.getType(), add);
+//   // auto sqrOfMeanX = square(*meanX);
+//   auto varX = builder.create<tosa::SubOp>(loc, type, *meanOfSqrX, sqrOfMeanX);
 
-  auto mul = builder.create<tosa::MulOp>(loc, type, sub, rsqrt, shift);
-  auto weightProd = builder.create<tosa::MulOp>(loc, type, mul, weight, shift);
-  return builder.create<tosa::AddOp>(loc, type, weightProd, bias);
-}
+//   auto eps = constantScalar(EPS, getElementTypeOrSelf(type), builder);
+//   auto sub = builder.create<tosa::SubOp>(loc, type, tensor, *meanX);
+//   auto add = builder.create<tosa::AddOp>(loc, varX.getType(), varX, eps);
+//   auto rsqrt = builder.create<tosa::RsqrtOp>(loc, add.getType(), add);
+
+//   auto mul = builder.create<tosa::MulOp>(loc, type, sub, rsqrt, shift);
+//   auto weightProd = builder.create<tosa::MulOp>(loc, type, mul, weight, shift);
+//   return builder.create<tosa::AddOp>(loc, type, weightProd, bias);
+// }
 
 Optional<Value> batchnorm_mean_var(OpBuilder& builder, Value tensor, ArrayRef<int64_t> dims, 
                                   Value weight, Value bias, Value mean, Value variance, double EPS = 0.00001) {
@@ -186,7 +201,7 @@ LogicalResult batchnorm_option(PatternRewriter& rewriter, BatchNormOp& bn, Value
       return success();
     }
   } else {
-    auto normRes = batchnorm(rewriter, bn.getInput(), {0, 2, 3}, weight, bias, eps);
+    auto normRes = norm_weight_bias(rewriter, bn.getInput(), {0, 2, 3}, weight, bias, eps);
     if (normRes) {
       rewriter.replaceOp(bn, *normRes);
       return success();
@@ -207,44 +222,41 @@ LogicalResult BatchNormConverter::matchAndRewrite(
   if (weight && bias) {
     return batchnorm_option(rewriter, bn, weight, bias, mean, variance, eps);
   } else {
-    auto outTy = bn.getType();
-    // auto elemTy = outTy.getElementType();
-    auto shape = SmallVector<int64_t, 4>{1, outTy.getDimSize(1), 1, 1};
-    auto newTy = outTy.clone(shape);
-
-    std::vector<float> values(outTy.getDimSize(1), 1.0);
-    auto attr = DenseElementsAttr::get(newTy, llvm::ArrayRef(values));
-    auto weight1 = rewriter.create<tosa::ConstOp>(bn.getLoc(), newTy, attr);
-
-    std::vector<float> values1(outTy.getDimSize(1), 0.0);
-    auto attr1 = DenseElementsAttr::get(newTy, llvm::ArrayRef(values1));
-    auto bias1 = rewriter.create<tosa::ConstOp>(bn.getLoc(), newTy, attr1);
-    return batchnorm_option(rewriter, bn, weight1, bias1, mean, variance, eps);
+    auto normRes = norm(rewriter, bn, {0, 2, 3}, eps);
+    if (normRes) {
+      rewriter.replaceOp(bn, *normRes);
+      return success();
+    }
   }
+  return failure();
 }
 
 LogicalResult LayerNormConverter::matchAndRewrite(
     LayerNormOp ln, PatternRewriter& rewriter) const {
   auto eps = ln.getEps().convertToDouble();
-
+  auto weight = ln.getWeight();
+  auto bias = ln.getBias();
   auto rank = ln.getInput().getType().getRank();
   auto normShape = ln.getNormalizedShape();
   auto dims = SmallVector<int64_t>{};
   for (auto i = 0U; i < normShape.size(); i++) {
     dims.emplace_back(rank - 1 - i);
   }
-
-  auto normRes = norm(ln.getInput(), dims, rewriter, eps);
-  if (!normRes) {
-    return failure();
+  if (weight && bias) {
+    auto normRes = norm_weight_bias(rewriter, ln.getInput(), dims, weight, bias, eps);
+    if (normRes) {
+      rewriter.replaceOp(ln, *normRes);
+      return success();
+    }
+  } else {
+    auto normRes = norm(rewriter, ln.getInput(), dims, eps);
+    if (normRes) {
+      rewriter.replaceOp(ln, *normRes);
+      return success();
+    }
   }
 
-  for (auto i = 0U; i < normShape.size(); i++) {
-    dims.emplace_back(rank - 1 - i);
-  }
-
-  rewriter.replaceOp(ln, *normRes);
-  return success();
+  return failure();
 }
 
 LogicalResult MeanConverter::matchAndRewrite(MeanOp op,
