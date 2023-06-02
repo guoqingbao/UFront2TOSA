@@ -46,5 +46,42 @@ LogicalResult ExpandOp::verify() {
   return success();
 }
 
+void ConcatOp::build(OpBuilder& builder, OperationState& state,
+                     ValueRange inputs, uint64_t axis) {
+  if (inputs.size() == 1) {
+    build(builder, state, inputs[0].getType(), inputs[0], axis);
+  }
+
+  auto tensorTy = dyn_cast<TensorType>(inputs[0].getType());
+  assert(tensorTy && "inputs must be tensor type");
+  assert(static_cast<uint64_t>(tensorTy.getRank()) > axis &&
+         "axis must be less than rank");
+
+  SmallVector<int64_t> shape{tensorTy.getShape()};
+
+  for (auto input : inputs.drop_front()) {
+    auto inputTy = dyn_cast<TensorType>(input.getType());
+    assert(inputTy && "inputs must be tensor type");
+    assert(inputTy.getRank() == tensorTy.getRank() &&
+           "all inputs must have same rank");
+    assert(inputTy.getElementType() == tensorTy.getElementType() &&
+           "all inputs must have same element type");
+
+    for (auto i : llvm::seq(0L, tensorTy.getRank())) {
+      if (static_cast<uint64_t>(i) == axis) {
+        continue;
+      }
+
+      assert(inputTy.getDimSize(i) == tensorTy.getDimSize(i) &&
+             "all inputs must have same shape except axis");
+    }
+
+    shape[axis] += inputTy.getDimSize(axis);
+  }
+
+  auto type = RankedTensorType::get(shape, tensorTy.getElementType());
+  build(builder, state, type, inputs, axis);
+}
+
 }  // namespace ufront
 }  // namespace mlir
