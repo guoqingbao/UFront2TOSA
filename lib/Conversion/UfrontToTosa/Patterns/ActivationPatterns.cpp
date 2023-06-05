@@ -15,6 +15,15 @@ LogicalResult ReluConverter::matchAndRewrite(ReluOp relu,
   return success();
 }
 
+LogicalResult ClipConverter::matchAndRewrite(ClipOp clip,
+                                             PatternRewriter& rewriter) const {
+  auto minFp = clip.getMinimum();
+  auto maxFp = clip.getMaximum();
+  rewriter.replaceOpWithNewOp<tosa::ClampOp>(
+      clip, clip.getType(), clip.getInput(), minFp.convertToDouble(), maxFp.convertToDouble(), minFp, maxFp);
+  return success();
+}
+
 // %op1 = tosa.EXP(%logits)
 // %op2 = tosa.REDUCE_SUM(op1) {reduce_axis=(%logits.rank - 1)}
 // %op3 = tosa.RECIPROCAL(%op2)

@@ -185,7 +185,8 @@ def Ufront_DropoutOp : Ufront_Op<"dropout"> {
     let arguments = (ins
         Ufront_Tensor: $input,
         F64Attr: $rate,
-        I64Attr: $seed
+        I64Attr: $seed,
+        BoolAttr: $training
     );
 
     let results = (outs
@@ -312,6 +313,18 @@ def Ufront_GeluOp : Ufront_Op<"gelu", [SameOperandsAndResultType]> {
     let arguments = (ins
         Ufront_Tensor: $input,
         BoolAttr: $approximate
+    );
+
+    let results = (outs
+        Ufront_Tensor: $output
+    );
+}
+
+def Ufront_ClipOp : Ufront_Op<"clip"> {
+    let arguments = (ins
+        Ufront_Tensor: $input,
+        F64Attr: $minimum,
+        F64Attr: $maximum
     );
 
     let results = (outs

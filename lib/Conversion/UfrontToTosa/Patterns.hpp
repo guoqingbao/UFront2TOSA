@@ -207,5 +207,11 @@ class StrueDivConverter : public OpRewritePattern<StrueDivOp> {
                                 PatternRewriter& rewriter) const override;
 };
 
+class ClipConverter : public OpRewritePattern<ClipOp> {
+  using OpRewritePattern<ClipOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(ClipOp relu,
+                                PatternRewriter& rewriter) const override;
+};
+
 }  // namespace ufront
 }  // namespace mlir

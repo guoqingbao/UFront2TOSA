@@ -408,9 +408,10 @@ LogicalResult ConcatConverter::matchAndRewrite(
 LogicalResult DropoutConverter::matchAndRewrite(
     DropoutOp dropout, PatternRewriter& rewriter) const {
   auto rate = dropout.getRate();
+  auto training = dropout.getTraining();
   srand(dropout.getSeed());
 
-  if (rate.isZero()) {
+  if (rate.isZero() || !training) {
     rewriter.replaceOp(dropout, dropout.getInput());
   } else if (rate.isExactlyValue(1.0)) {
     auto type = dropout.getType();

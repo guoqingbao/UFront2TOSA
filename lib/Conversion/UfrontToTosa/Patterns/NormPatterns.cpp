@@ -222,7 +222,7 @@ LogicalResult BatchNormConverter::matchAndRewrite(
   if (weight && bias) {
     return batchnorm_option(rewriter, bn, weight, bias, mean, variance, eps);
   } else {
-    auto normRes = norm(rewriter, bn, {0, 2, 3}, eps);
+    auto normRes = norm(rewriter, bn.getInput(), {0, 2, 3}, eps);
     if (normRes) {
       rewriter.replaceOp(bn, *normRes);
       return success();
