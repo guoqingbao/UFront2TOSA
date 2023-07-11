@@ -319,10 +319,24 @@ LogicalResult adaptivePool2D(Pool2DOp pool, PatternRewriter& rewriter) {
   newShape[2] = outSizeVals[1];
   auto newType = RankedTensorType::get(newShape, oldType.getElementType());
 
+  auto tp = oldType.getElementType();
+  if (tp.isF16()) {
+    mlir::FloatType destType = mlir::FloatType::getF32(rewriter.getContext());
+    transposed = rewriter.create<tosa::CastOp>(pool->getLoc(), destType, transposed);
+  } 
+
+
   auto pooled = rewriter.create<tosa::AvgPool2dOp>(
       pool->getLoc(), newType, transposed, kernel, stride, padding);
 
-  rewriter.replaceOp(pool, transpose(pooled, {0, 3, 1, 2}, rewriter));
+  if (tp.isF16()) {
+    mlir::FloatType destType = mlir::FloatType::getF16(rewriter.getContext());
+    auto pooled1 = rewriter.create<tosa::CastOp>(pool->getLoc(), destType, pooled);
+    rewriter.replaceOp(pool, transpose(pooled1, {0, 3, 1, 2}, rewriter));
+  } else {
+    rewriter.replaceOp(pool, transpose(pooled, {0, 3, 1, 2}, rewriter));
+  }
+
 
   return success();
 }

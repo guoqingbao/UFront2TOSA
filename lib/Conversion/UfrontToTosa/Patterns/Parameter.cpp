@@ -31,7 +31,7 @@ LogicalResult ParameterConverter::matchAndRewrite(
   if (hex.size() < 20 && hex[0]=='0' and hex[1]=='x')
   {
     auto dtype = param->getAttrOfType<StringAttr>("dtype");
-    if (dtype.str() == "Float") {
+    if (dtype.str() == "Float" || dtype.str() == "Half" || dtype.str() == "BHalf") {
       auto output = param.getTensor();
       auto outTy = output.getType();
       auto outShape = outTy.getShape();
@@ -43,25 +43,33 @@ LogicalResult ParameterConverter::matchAndRewrite(
         return ret;
       };
       int size = outsize(outShape);
-      // printf("size %d, %s, %d, %d, %d, %d", size, hex.c_str(), outShape[0], outShape[1], outShape[2], outShape[3]);
-      //TODO hex to memory address, obtain vector from memory
+
       float* array = char_to_pointer(hex);
-      // printf("C++ address %s, 100th value %f\n", hex.c_str(), array[100]);
-      std::vector<float> vec {array, array + size};
+      if (dtype.str() == "Half") {
+        auto attr = DenseElementsAttr::get(param.getType(), llvm::ArrayRef(array, size));
+        rewriter.replaceOpWithNewOp<tosa::ConstOp>(param, param.getType(), attr);
+      } if (dtype.str() == "BHalf") {
+        auto attr = DenseElementsAttr::get(param.getType(), llvm::ArrayRef((uint16_t*)array, size));
+        rewriter.replaceOpWithNewOp<tosa::ConstOp>(param, param.getType(), attr);
+      } else {
+        auto attr = DenseElementsAttr::get(param.getType(), llvm::ArrayRef(array, size));
+        rewriter.replaceOpWithNewOp<tosa::ConstOp>(param, param.getType(), attr);
+      }
+
+
+            // printf("C++ address %s, 100th value %f\n", hex.c_str(), array[100]);
+      // std::vector<float> vec {array, array + size};
 
       // SmallVector<APFloat> values;
       // transform(vec, std::back_inserter(values),
       //           [](float f) { return APFloat{f}; });
 
-      auto initialValue = *std::begin(vec);
-      SmallVector<float> values(size, initialValue);
-      #pragma omp parallel for
-      for (int i=0; i<size; i++) {
-          values[i] = vec[i];
-      }
-
-      auto attr = DenseElementsAttr::get(param.getType(), llvm::ArrayRef<float>(values));
-      rewriter.replaceOpWithNewOp<tosa::ConstOp>(param, param.getType(), attr);
+      // auto initialValue = *std::begin(vec);
+      // SmallVector<float> values(size, initialValue);
+      // #pragma omp parallel for
+      // for (int i=0; i<size; i++) {
+      //     values[i] = vec[i];
+      // }
     }
 
   } else {
