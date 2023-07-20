@@ -7,6 +7,10 @@
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/Pass/Pass.h"
 
+namespace mlir::ufront {
+std::unique_ptr<Pass> createFixTosaMatmul();
+}
+
 #define GEN_PASS_REGISTRATION
 #include "Conversion/Passes.hpp.inc"
 

@@ -13,4 +13,9 @@ def TestConvertElidedToConst : Pass<"test-convert-elided-to-const"> {
     let dependentDialects = ["mlir::tosa::TosaDialect"];
 }
 
+def FixTosaMatmul : Pass<"fix-tosa-matmul"> {
+    let constructor = "mlir::ufront::createFixTosaMatmul()";
+    let dependentDialects = ["mlir::tosa::TosaDialect"];
+}
+
 #endif // UFRONT_CONVERSION_PASSES
