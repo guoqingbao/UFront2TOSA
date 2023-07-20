@@ -14,6 +14,7 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/Dialect/Linalg/IR/Linalg.h"
 
 namespace mlir {
 namespace ufront {
@@ -56,6 +57,7 @@ void populateConvertUfrontToTosaPatterns(RewritePatternSet& patterns) {
                ReciprocalConverter,
                SqrtConverter,
                NegConverter,
+               ErfConverter,
                StrueDivConverter>(patterns.getContext());
   // clang-format on
 }
@@ -233,25 +235,32 @@ LogicalResult LinearConverter::matchAndRewrite(
   auto rank = inTy.getRank();
   auto elemTy = inTy.getElementType();
 
-  auto shape = SmallVector<int64_t, 3>{1, inTy.getDimSize(rank - 1),
+  auto shape = SmallVector<int64_t, 3>{inTy.getDimSize(rank - 1),
                                        outTy.getDimSize(rank - 1)};
 
   if (rank < 3) {
-    // shape.insert(shape.begin(), 1);
+    shape.insert(shape.begin(), 1);
     auto inShape = SmallVector<int64_t>{inTy.getShape()};
     while (inShape.size() != 3) {
       inShape.insert(inShape.begin(), 1);
     }
     input = reshape(input, inShape, rewriter);
   } else {
-    // shape.insert(shape.begin(), inTy.getShape()[rank - 3]);
+    shape.insert(shape.begin(), inTy.getShape()[rank - 3]);
     input = reshape(input, inTy.getShape().take_back(3), rewriter);
   }
 
   auto weight = linear.getWeight();
   if (weight) {
     weight = transpose(weight, {1, 0}, rewriter);
-    weight = reshape(weight, shape, rewriter); //for batch matmul
+    if (shape[0] > 1) {
+      auto empty = rewriter
+                      .create<tensor::EmptyOp>(linear->getLoc(), ArrayRef{shape[0], shape[1], shape[2]}, inTy.getElementType())
+                      .getResult();
+      weight = rewriter.create<linalg::BroadcastOp>(linear->getLoc(), weight, empty, ArrayRef{0L})->getResult(0); //Broadcast for batch matmul
+    } else {
+      weight = reshape(weight, shape, rewriter); //for batch matmul
+    }
     auto result = matmul(input, weight, rewriter);
     auto bias = linear.getBias();
     if (bias) {
@@ -742,6 +751,13 @@ LogicalResult SqrtConverter::matchAndRewrite(SqrtOp sqrt,
   return success();
 }
 
+LogicalResult ErfConverter::matchAndRewrite(ErfOp erf,
+                                             PatternRewriter& rewriter) const {
+
+  auto approximate = erf.getApproximate();
+  rewriter.replaceOp(erf, approximateErfOp(rewriter, erf, erf.getInput()));
+  return success();
+}
 
 }  // namespace ufront
 }  // namespace mlir

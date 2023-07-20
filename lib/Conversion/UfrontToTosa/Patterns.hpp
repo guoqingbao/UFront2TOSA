@@ -111,6 +111,12 @@ class GeluConverter : public OpRewritePattern<GeluOp> {
                                 PatternRewriter& rewriter) const override;
 };
 
+class ErfConverter : public OpRewritePattern<ErfOp> {
+  using OpRewritePattern<ErfOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(ErfOp erf,
+                                PatternRewriter& rewriter) const override;
+};
+
 class SliceConverter : public OpRewritePattern<SliceOp> {
   using OpRewritePattern<SliceOp>::OpRewritePattern;
   LogicalResult matchAndRewrite(SliceOp slice,

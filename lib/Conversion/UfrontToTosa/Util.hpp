@@ -14,6 +14,10 @@ DenseElementsAttr getDenseFloatAttr(double value, Type type,
                                     OpBuilder& builder);
 
 SmallVector<int64_t> getIntValueFromArrayAttr(ArrayAttr array);
+std::optional<Value> getConstTensor(OpBuilder &rewriter, Operation *op,
+                                    float value);
+Value approximateErfOp(OpBuilder &rewriter,
+                                Operation *op, Value x);
 
 }  // namespace ufront
 }  // namespace mlir

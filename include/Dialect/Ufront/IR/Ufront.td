@@ -332,6 +332,17 @@ def Ufront_GeluOp : Ufront_Op<"gelu", [SameOperandsAndResultType]> {
     );
 }
 
+def Ufront_ErfOp : Ufront_Op<"erf", [SameOperandsAndResultType]> {
+    let arguments = (ins
+        Ufront_Tensor: $input,
+        BoolAttr: $approximate
+    );
+
+    let results = (outs
+        Ufront_Tensor: $output
+    );
+}
+
 def Ufront_ClipOp : Ufront_Op<"clip"> {
     let arguments = (ins
         Ufront_Tensor: $input,

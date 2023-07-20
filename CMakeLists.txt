@@ -4,16 +4,16 @@ set(CMAKE_CXX_COMPILER clang++-16)
 
 add_compile_options("-Wno-ambiguous-reversed-operator")
 add_compile_options("-fexceptions")
-add_compile_options("-g")
-add_compile_options("-O0")
+# add_compile_options("-g")
+# add_compile_options("-O0")
 
 
 add_link_options("-fuse-ld=lld")
 
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-# set(CMAKE_BUILD_TYPE "Release")
-set(CMAKE_BUILD_TYPE "Debug")
+set(CMAKE_BUILD_TYPE "Release")
+# set(CMAKE_BUILD_TYPE "Debug")
 
 project(ufront LANGUAGES CXX C)
 set(CMAKE_C_STANDARD 11)
