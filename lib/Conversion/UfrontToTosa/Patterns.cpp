@@ -9,6 +9,8 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"
+#include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/PatternMatch.h"
@@ -20,6 +22,7 @@ void populateConvertUfrontToTosaPatterns(RewritePatternSet& patterns) {
   // clang-format off
   patterns.add<AddConverter, 
                ReluConverter, 
+               ClipConverter,
                FlatConverter, 
                Conv2DConverter,
                BatchNormConverter, 
@@ -50,6 +53,9 @@ void populateConvertUfrontToTosaPatterns(RewritePatternSet& patterns) {
                SplitConverter,
                SubtractConverter,
                MatmulConverter,
+               ReciprocalConverter,
+               SqrtConverter,
+               NegConverter,
                StrueDivConverter>(patterns.getContext());
   // clang-format on
 }
@@ -74,7 +80,7 @@ Value lowerToConv2D(Conv2DOp conv, OpBuilder& builder) {
   auto pad = conv.getPad();
   auto padVals = getIntValueFromArrayAttr(pad);
   auto newPad = builder.getDenseI64ArrayAttr(
-      {padVals[0], padVals[0], padVals[1], padVals[1]});
+      {padVals[0], padVals[1], padVals[2], padVals[3]});
 
   // stride (attribute)
   // auto stride = conv.getStride().cast<DenseI64ArrayAttr>();
@@ -140,7 +146,7 @@ Value lowerToDepthwiseConv2D(Conv2DOp conv, OpBuilder& builder) {
   auto pad = conv.getPad();
   auto padVals = getIntValueFromArrayAttr(pad);
   auto newPad = builder.getDenseI64ArrayAttr(
-      {padVals[0], padVals[0], padVals[1], padVals[1]});
+      {padVals[0], padVals[1], padVals[2], padVals[3]});
 
   // stride (attribute)
   // auto stride = conv.getStride().cast<DenseI64ArrayAttr>();
@@ -220,31 +226,32 @@ LogicalResult Conv2DConverter::matchAndRewrite(
 
 LogicalResult LinearConverter::matchAndRewrite(
     LinearOp linear, PatternRewriter& rewriter) const {
+  
   auto input = linear.getInput();
   auto inTy = input.getType();
   auto outTy = linear.getType();
   auto rank = inTy.getRank();
   auto elemTy = inTy.getElementType();
 
-  auto shape = SmallVector<int64_t, 3>{inTy.getDimSize(rank - 1),
+  auto shape = SmallVector<int64_t, 3>{1, inTy.getDimSize(rank - 1),
                                        outTy.getDimSize(rank - 1)};
 
   if (rank < 3) {
-    shape.insert(shape.begin(), 1);
+    // shape.insert(shape.begin(), 1);
     auto inShape = SmallVector<int64_t>{inTy.getShape()};
     while (inShape.size() != 3) {
       inShape.insert(inShape.begin(), 1);
     }
     input = reshape(input, inShape, rewriter);
   } else {
-    shape.insert(shape.begin(), inTy.getShape()[rank - 3]);
+    // shape.insert(shape.begin(), inTy.getShape()[rank - 3]);
     input = reshape(input, inTy.getShape().take_back(3), rewriter);
   }
 
   auto weight = linear.getWeight();
   if (weight) {
     weight = transpose(weight, {1, 0}, rewriter);
-    weight = reshape(weight, shape, rewriter);
+    weight = reshape(weight, shape, rewriter); //for batch matmul
     auto result = matmul(input, weight, rewriter);
     auto bias = linear.getBias();
     if (bias) {
@@ -295,7 +302,7 @@ LogicalResult maxPool2D(Pool2DOp pool, PatternRewriter& rewriter) {
 }
 
 // TODO: refactor
-LogicalResult adaptivePool2D(Pool2DOp pool, PatternRewriter& rewriter) {
+LogicalResult adaptivePool2DAvg(Pool2DOp pool, PatternRewriter& rewriter) {
   auto stride = rewriter.getDenseI64ArrayAttr({1, 1});
   auto padding = rewriter.getDenseI64ArrayAttr({0, 0, 0, 0});
 
@@ -325,9 +332,53 @@ LogicalResult adaptivePool2D(Pool2DOp pool, PatternRewriter& rewriter) {
     transposed = rewriter.create<tosa::CastOp>(pool->getLoc(), destType, transposed);
   } 
 
+  auto pooled = rewriter.create<tosa::AvgPool2dOp>(pool->getLoc(), newType, transposed, kernel, stride, padding); 
 
-  auto pooled = rewriter.create<tosa::AvgPool2dOp>(
-      pool->getLoc(), newType, transposed, kernel, stride, padding);
+  if (tp.isF16()) {
+    mlir::FloatType destType = mlir::FloatType::getF16(rewriter.getContext());
+    auto pooled1 = rewriter.create<tosa::CastOp>(pool->getLoc(), destType, pooled);
+    rewriter.replaceOp(pool, transpose(pooled1, {0, 3, 1, 2}, rewriter));
+  } else {
+    rewriter.replaceOp(pool, transpose(pooled, {0, 3, 1, 2}, rewriter));
+  }
+
+
+  return success();
+}
+
+
+LogicalResult adaptivePool2DMax(Pool2DOp pool, PatternRewriter& rewriter) {
+  
+auto stride = rewriter.getDenseI64ArrayAttr({1, 1});
+  auto padding = rewriter.getDenseI64ArrayAttr({0, 0, 0, 0});
+
+  auto outSizeAttr = pool->getAttrOfType<ArrayAttr>("output_size");
+  auto outSizeVals = SmallVector<int64_t, 2>{};
+  transform(outSizeAttr, std::back_inserter(outSizeVals), [](Attribute attr) {
+    return attr.dyn_cast<IntegerAttr>().getInt();
+  });
+
+  auto transposed = transpose(pool.getInput(), {0, 2, 3, 1}, rewriter);
+  auto oldType = transposed.getType().dyn_cast<ShapedType>();
+  auto oldShape = oldType.getShape();
+
+  auto kernelVals = SmallVector<int64_t, 2>{};
+  kernelVals.emplace_back(oldShape[1] / outSizeVals[0]);
+  kernelVals.emplace_back(oldShape[2] / outSizeVals[1]);
+  auto kernel = rewriter.getDenseI64ArrayAttr(kernelVals);
+
+  auto newShape = SmallVector<int64_t>{oldShape};
+  newShape[1] = outSizeVals[0];
+  newShape[2] = outSizeVals[1];
+  auto newType = RankedTensorType::get(newShape, oldType.getElementType());
+
+  auto tp = oldType.getElementType();
+  if (tp.isF16()) {
+    mlir::FloatType destType = mlir::FloatType::getF32(rewriter.getContext());
+    transposed = rewriter.create<tosa::CastOp>(pool->getLoc(), destType, transposed);
+  } 
+
+  auto pooled = rewriter.create<tosa::MaxPool2dOp>(pool->getLoc(), newType, transposed, kernel, stride, padding); 
 
   if (tp.isF16()) {
     mlir::FloatType destType = mlir::FloatType::getF16(rewriter.getContext());
@@ -375,6 +426,8 @@ LogicalResult avgPool2D(Pool2DOp pool, PatternRewriter& rewriter) {
 struct PoolType {
   constexpr static StringLiteral POOL_MAX = "POOL_MAX";
   constexpr static StringLiteral POOL_ADAPTIVE = "POOL_ADAPTIVE";
+  constexpr static StringLiteral POOL_ADAPTIVE_AVG = "POOL_ADAPTIVE_AVG";
+  constexpr static StringLiteral POOL_ADAPTIVE_MAX = "POOL_ADAPTIVE_MAX";
   constexpr static StringLiteral POOL_AVG = "POOL_AVG";
 };
 
@@ -385,7 +438,9 @@ LogicalResult Pool2DConverter::matchAndRewrite(
   auto poolType = pool.getPoolType();
   auto fn = StringSwitch<Fn>(poolType)
                 .Case(PoolType::POOL_MAX, maxPool2D)
-                .Case(PoolType::POOL_ADAPTIVE, adaptivePool2D)
+                .Case(PoolType::POOL_ADAPTIVE, adaptivePool2DAvg)
+                .Case(PoolType::POOL_ADAPTIVE_AVG, adaptivePool2DAvg)
+                .Case(PoolType::POOL_ADAPTIVE_MAX, adaptivePool2DMax)
                 .Case(PoolType::POOL_AVG, avgPool2D)
                 .Default(nullptr);
 
@@ -664,6 +719,29 @@ LogicalResult SplitConverter::matchAndRewrite(SplitOp op,
   rewriter.replaceOp(op, results);
   return success();
 }
+
+
+LogicalResult ReciprocalConverter::matchAndRewrite(ReciprocalOp rc,
+                                PatternRewriter& rewriter) const {
+  rewriter.replaceOpWithNewOp<tosa::ReciprocalOp>(rc, rc.getType(),
+                                               rc.getInput());
+  return success();
+}
+
+LogicalResult NegConverter::matchAndRewrite(NegOp neg,
+                                PatternRewriter& rewriter) const {
+  rewriter.replaceOpWithNewOp<complex::NegOp>(neg, neg.getType(),
+                                               neg.getInput());
+  return success();
+}
+
+LogicalResult SqrtConverter::matchAndRewrite(SqrtOp sqrt,
+                                PatternRewriter& rewriter) const {
+  rewriter.replaceOpWithNewOp<math::SqrtOp>(sqrt, sqrt.getType(),
+                                               sqrt.getInput());
+  return success();
+}
+
 
 }  // namespace ufront
 }  // namespace mlir

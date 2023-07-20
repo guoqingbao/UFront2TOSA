@@ -20,6 +20,25 @@ class ReluConverter : public OpRewritePattern<ReluOp> {
                                 PatternRewriter& rewriter) const override;
 };
 
+class ReciprocalConverter : public OpRewritePattern<ReciprocalOp> {
+  using OpRewritePattern<ReciprocalOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(ReciprocalOp rc,
+                                PatternRewriter& rewriter) const override;
+};
+
+class SqrtConverter : public OpRewritePattern<SqrtOp> {
+  using OpRewritePattern<SqrtOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(SqrtOp sqrt,
+                                PatternRewriter& rewriter) const override;
+};
+
+class NegConverter : public OpRewritePattern<NegOp> {
+  using OpRewritePattern<NegOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(NegOp neg,
+                                PatternRewriter& rewriter) const override;
+};
+
+
 class FlatConverter : public OpRewritePattern<FlatOp> {
   using OpRewritePattern<FlatOp>::OpRewritePattern;
   LogicalResult matchAndRewrite(FlatOp flat,

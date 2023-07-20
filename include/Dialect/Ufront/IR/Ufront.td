@@ -15,6 +15,8 @@ class Ufront_Op<string mnemonic, list<Trait> traits = []> : Op<Ufront_Dialect, m
 class Ufront_OpX<string mnemonic, list<Trait> traits = [AttrSizedOperandSegments]> : Op<Ufront_Dialect, mnemonic, traits>;
 
 def Ufront_IntArrayAttr2 : ConfinedAttr<I64ArrayAttr, [ArrayCount<2>]>;
+def Ufront_IntArrayAttr4 : ConfinedAttr<I64ArrayAttr, [ArrayCount<4>]>;
+
 def Ufront_Float : AnyTypeOf<[F16, F32]>;
 def Ufront_Tensor : TensorOf<[Ufront_Float]>;
 def Ufront_Tensor1D : 1DTensorOf<[Ufront_Float]>;
@@ -23,6 +25,16 @@ def Ufront_Tensor3D : 3DTensorOf<[Ufront_Float]>;
 def Ufront_Tensor4D : 4DTensorOf<[Ufront_Float]>;
 
 class Ufront_ActivationOp<string mnemonic, list<Trait> traits = [SameOperandsAndResultType]> : Ufront_Op<mnemonic, traits> {
+    let arguments = (ins
+        Ufront_Tensor: $input
+    );
+
+    let results = (outs
+        Ufront_Tensor: $output
+    );
+}
+
+class Ufront_SameOperandsAndResultOp<string mnemonic, list<Trait> traits = [SameOperandsAndResultType]> : Ufront_Op<mnemonic, traits> {
     let arguments = (ins
         Ufront_Tensor: $input
     );
@@ -71,7 +83,7 @@ def Ufront_Conv2DOp : Ufront_OpX<"conv2d"> {
         Optional<Ufront_Tensor>: $bias,
         Ufront_IntArrayAttr2: $kernel,
         Ufront_IntArrayAttr2: $stride,
-        Ufront_IntArrayAttr2: $pad,
+        Ufront_IntArrayAttr4: $pad,
         I64Attr: $groups
     );
 
@@ -349,5 +361,11 @@ def Ufront_MatmulOp : Ufront_BinaryOp<"matmul">;
 def Ufront_SaddOp : Ufront_BinaryScalarOp<"sadd">;
 def Ufront_SmultiplyOp : Ufront_BinaryScalarOp<"smultiply">;
 def Ufront_StrueDivOp : Ufront_BinaryScalarOp<"struediv">;
+
+def Ufront_SqrtOp : Ufront_SameOperandsAndResultOp<"sqrt">;
+def Ufront_RSqrtOp : Ufront_SameOperandsAndResultOp<"rsqrt">;
+def Ufront_ReciprocalOp : Ufront_SameOperandsAndResultOp<"reciprocal">;
+def Ufront_NegOp : Ufront_SameOperandsAndResultOp<"neg">;
+
 
 #endif // UFRONT_OPS
