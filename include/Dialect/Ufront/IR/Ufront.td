@@ -355,6 +355,17 @@ def Ufront_ClipOp : Ufront_Op<"clip"> {
     );
 }
 
+def Ufront_EmbeddingOp : Ufront_Op<"embedding"> {
+    let arguments = (ins
+        2DTensorOf<[I32, I64]>: $input,
+        Ufront_Tensor2D: $weight
+    );
+
+    let results = (outs
+        Ufront_Tensor: $output
+    );
+}
+
 def Ufront_ReluOp : Ufront_ActivationOp<"relu">;
 def Ufront_SoftmaxOp : Ufront_ActivationOp<"softmax">;
 // def Ufront_GeluOp : Ufront_ActivationOp<"gelu">;

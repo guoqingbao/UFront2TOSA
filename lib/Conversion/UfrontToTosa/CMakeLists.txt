@@ -8,6 +8,7 @@ add_mlir_conversion_library(UfrontToTosaConversion
     Patterns/NormPatterns.cpp
     Patterns/Parameter.cpp
     Patterns/BinaryScalarPatterns.cpp
+    Patterns/Embedding.cpp
 
     DEPENDS
     UfrontConversionIncGen

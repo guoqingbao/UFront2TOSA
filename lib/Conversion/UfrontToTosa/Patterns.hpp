@@ -245,5 +245,11 @@ class ClipConverter : public OpRewritePattern<ClipOp> {
                                 PatternRewriter& rewriter) const override;
 };
 
+class EmbeddingConverter : public OpRewritePattern<EmbeddingOp> {
+  using OpRewritePattern<EmbeddingOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(EmbeddingOp embedding,
+                                PatternRewriter& rewriter) const override;
+};
+
 }  // namespace ufront
 }  // namespace mlir
