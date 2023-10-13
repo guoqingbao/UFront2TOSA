@@ -18,6 +18,14 @@ LogicalResult SaddConverter::matchAndRewrite(SaddOp sadd,
   return success();
 };
 
+LogicalResult SsubConverter::matchAndRewrite(SsubOp ssub,
+                                             PatternRewriter& rewriter) const {
+  auto scalar = getScalarTensor(ssub.getScalar().convertToDouble(), rewriter);
+  rewriter.replaceOpWithNewOp<tosa::SubOp>(ssub, ssub.getType(),
+                                           ssub.getInput(), scalar);
+  return success();
+};
+
 LogicalResult SmultiplyConverter::matchAndRewrite(
     SmultiplyOp smultiply, PatternRewriter& rewriter) const {
   auto scalar =

@@ -17,12 +17,12 @@ class Ufront_OpX<string mnemonic, list<Trait> traits = [AttrSizedOperandSegments
 def Ufront_IntArrayAttr2 : ConfinedAttr<I64ArrayAttr, [ArrayCount<2>]>;
 def Ufront_IntArrayAttr4 : ConfinedAttr<I64ArrayAttr, [ArrayCount<4>]>;
 
-def Ufront_Float : AnyTypeOf<[F16, F32]>;
-def Ufront_Tensor : TensorOf<[Ufront_Float]>;
-def Ufront_Tensor1D : 1DTensorOf<[Ufront_Float]>;
-def Ufront_Tensor2D : 2DTensorOf<[Ufront_Float]>;
-def Ufront_Tensor3D : 3DTensorOf<[Ufront_Float]>;
-def Ufront_Tensor4D : 4DTensorOf<[Ufront_Float]>;
+def Ufront_Type : AnyTypeOf<[F16, F32, F64, BF16, I32, I64, I8]>;
+def Ufront_Tensor : TensorOf<[Ufront_Type]>;
+def Ufront_Tensor1D : 1DTensorOf<[Ufront_Type]>;
+def Ufront_Tensor2D : 2DTensorOf<[Ufront_Type]>;
+def Ufront_Tensor3D : 3DTensorOf<[Ufront_Type]>;
+def Ufront_Tensor4D : 4DTensorOf<[Ufront_Type]>;
 
 class Ufront_ActivationOp<string mnemonic, list<Trait> traits = [SameOperandsAndResultType]> : Ufront_Op<mnemonic, traits> {
     let arguments = (ins
@@ -370,6 +370,7 @@ def Ufront_SubtractOp : Ufront_BinaryOp<"subtract">;
 def Ufront_MatmulOp : Ufront_BinaryOp<"matmul">;
 
 def Ufront_SaddOp : Ufront_BinaryScalarOp<"sadd">;
+def Ufront_SsubOp : Ufront_BinaryScalarOp<"ssub">;
 def Ufront_SmultiplyOp : Ufront_BinaryScalarOp<"smultiply">;
 def Ufront_StrueDivOp : Ufront_BinaryScalarOp<"struediv">;
 

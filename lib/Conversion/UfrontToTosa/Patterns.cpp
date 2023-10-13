@@ -50,6 +50,7 @@ void populateConvertUfrontToTosaPatterns(RewritePatternSet& patterns) {
                MeanConverter,
                ParameterConverter,
                SaddConverter,
+               SsubConverter,
                SmultiplyConverter,
                SplitConverter,
                SubtractConverter,

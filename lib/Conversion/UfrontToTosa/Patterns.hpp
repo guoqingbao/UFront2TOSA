@@ -208,6 +208,13 @@ class SaddConverter : public OpRewritePattern<SaddOp> {
                                 PatternRewriter& rewriter) const override;
 };
 
+class SsubConverter : public OpRewritePattern<SsubOp> {
+  using OpRewritePattern<SsubOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(SsubOp ssub,
+                                PatternRewriter& rewriter) const override;
+};
+
+
 class SplitConverter : public OpRewritePattern<SplitOp> {
   using OpRewritePattern<SplitOp>::OpRewritePattern;
   LogicalResult matchAndRewrite(SplitOp split,
