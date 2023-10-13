@@ -366,6 +366,17 @@ def Ufront_EmbeddingOp : Ufront_Op<"embedding"> {
     );
 }
 
+def Ufront_CastOp : Ufront_Op<"cast"> {
+    let arguments = (ins
+        Ufront_Tensor: $input,
+        StrAttr: $dtype
+    );
+
+    let results = (outs
+        Ufront_Tensor: $output
+    );
+}
+
 def Ufront_ReluOp : Ufront_ActivationOp<"relu">;
 def Ufront_SoftmaxOp : Ufront_ActivationOp<"softmax">;
 // def Ufront_GeluOp : Ufront_ActivationOp<"gelu">;

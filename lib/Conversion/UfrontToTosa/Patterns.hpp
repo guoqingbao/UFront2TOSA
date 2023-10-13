@@ -251,5 +251,11 @@ class EmbeddingConverter : public OpRewritePattern<EmbeddingOp> {
                                 PatternRewriter& rewriter) const override;
 };
 
+class CastConverter : public OpRewritePattern<CastOp> {
+  using OpRewritePattern<CastOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(CastOp cast,
+                                PatternRewriter& rewriter) const override;
+};
+
 }  // namespace ufront
 }  // namespace mlir

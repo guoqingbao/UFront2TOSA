@@ -60,7 +60,8 @@ void populateConvertUfrontToTosaPatterns(RewritePatternSet& patterns) {
                NegConverter,
                ErfConverter,
                StrueDivConverter,
-               EmbeddingConverter>(patterns.getContext());
+               EmbeddingConverter,
+               CastConverter>(patterns.getContext());
   // clang-format on
 }
 
