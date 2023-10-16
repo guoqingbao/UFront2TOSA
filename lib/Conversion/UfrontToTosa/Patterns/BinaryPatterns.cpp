@@ -26,7 +26,35 @@ LogicalResult BatchMatmulConverter::matchAndRewrite(
   auto type = bmm.getType();
   auto lhs = bmm.getLhs();
   auto rhs = bmm.getRhs();
-  rewriter.replaceOpWithNewOp<tosa::MatMulOp>(bmm, type, lhs, rhs);
+
+  auto lhsTy = lhs.getType();
+  auto rhsTy = rhs.getType();
+  assert(lhsTy.getRank() == rhsTy.getRank() &&
+         "operator types must be the same rank");
+
+  if (auto rank = lhsTy.getRank(); rank == 3) {
+    rewriter.replaceOpWithNewOp<tosa::MatMulOp>(bmm, type, lhs, rhs);
+  } else {
+    SmallVector<int64_t> newLhsDims(3, 1);
+    SmallVector<int64_t> newRhsDims(3, 1);
+
+    for (auto i = 0; i < rank - 2; ++i) {
+      newLhsDims[0] *= lhsTy.getDimSize(i);
+      newRhsDims[0] *= rhsTy.getDimSize(i);
+    }
+
+    for (auto i = rank - 2, j = i; i < rank; ++i) {
+      newLhsDims[i - j + 1] = lhsTy.getDimSize(i);
+      newRhsDims[i - j + 1] = rhsTy.getDimSize(i);
+    }
+
+    auto newLhs = reshape(lhs, newLhsDims, rewriter);
+    auto newRhs = reshape(rhs, newRhsDims, rewriter);
+    auto newVal = matmul(newLhs, newRhs, rewriter);
+
+    rewriter.replaceOp(bmm, reshape(newVal, type.getShape(), rewriter));
+  }
+
   return success();
 }
 
