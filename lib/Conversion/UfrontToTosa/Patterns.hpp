@@ -20,6 +20,12 @@ class ReluConverter : public OpRewritePattern<ReluOp> {
                                 PatternRewriter& rewriter) const override;
 };
 
+class TanhConverter : public OpRewritePattern<TanhOp> {
+  using OpRewritePattern<TanhOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(TanhOp tanh,
+                                PatternRewriter& rewriter) const override;
+};
+
 class ReciprocalConverter : public OpRewritePattern<ReciprocalOp> {
   using OpRewritePattern<ReciprocalOp>::OpRewritePattern;
   LogicalResult matchAndRewrite(ReciprocalOp rc,

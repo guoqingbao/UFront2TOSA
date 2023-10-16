@@ -23,6 +23,7 @@ void populateConvertUfrontToTosaPatterns(RewritePatternSet& patterns) {
   // clang-format off
   patterns.add<AddConverter, 
                ReluConverter, 
+               TanhConverter, 
                ClipConverter,
                FlatConverter, 
                Conv2DConverter,

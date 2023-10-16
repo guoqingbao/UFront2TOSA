@@ -15,6 +15,13 @@ LogicalResult ReluConverter::matchAndRewrite(ReluOp relu,
   return success();
 }
 
+LogicalResult TanhConverter::matchAndRewrite(TanhOp tanh,
+                                             PatternRewriter& rewriter) const {
+  rewriter.replaceOpWithNewOp<tosa::TanhOp>(
+      tanh, tanh.getType(), tanh.getInput());
+  return success();
+}
+
 LogicalResult ClipConverter::matchAndRewrite(ClipOp clip,
                                              PatternRewriter& rewriter) const {
   auto minFp = clip.getMinimum();

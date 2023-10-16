@@ -31,7 +31,7 @@ LogicalResult ParameterConverter::matchAndRewrite(
   if (hex.size() < 20 && hex[0]=='0' and hex[1]=='x')
   {
     auto dtype = param->getAttrOfType<StringAttr>("dtype");
-    if (dtype.str() == "Float" || dtype.str() == "Half" || dtype.str() == "BHalf") {
+    if (dtype.str() == "Float" || dtype.str() == "Half" || dtype.str() == "BHalf" || dtype.str() == "Int64") {
       auto output = param.getTensor();
       auto outTy = output.getType();
       auto outShape = outTy.getShape();
@@ -46,12 +46,19 @@ LogicalResult ParameterConverter::matchAndRewrite(
 
       float* array = char_to_pointer(hex);
       if (dtype.str() == "Half") {
-        auto attr = DenseElementsAttr::get(param.getType(), llvm::ArrayRef(array, size));
-        rewriter.replaceOpWithNewOp<tosa::ConstOp>(param, param.getType(), attr);
-      } if (dtype.str() == "BHalf") {
         auto attr = DenseElementsAttr::get(param.getType(), llvm::ArrayRef((uint16_t*)array, size));
         rewriter.replaceOpWithNewOp<tosa::ConstOp>(param, param.getType(), attr);
-      } else {
+      } else if (dtype.str() == "BHalf") {
+        auto attr = DenseElementsAttr::get(param.getType(), llvm::ArrayRef((uint16_t*)array, size));
+        rewriter.replaceOpWithNewOp<tosa::ConstOp>(param, param.getType(), attr);
+      } else if (dtype.str() == "Int64") {
+        auto attr = DenseElementsAttr::get(param.getType(), llvm::ArrayRef((int64_t*)array, size));
+        rewriter.replaceOpWithNewOp<tosa::ConstOp>(param, param.getType(), attr);
+      } else if (dtype.str() == "Int32") {
+        auto attr = DenseElementsAttr::get(param.getType(), llvm::ArrayRef((int32_t*)array, size));
+        rewriter.replaceOpWithNewOp<tosa::ConstOp>(param, param.getType(), attr);
+      }
+      else {
         auto attr = DenseElementsAttr::get(param.getType(), llvm::ArrayRef(array, size));
         rewriter.replaceOpWithNewOp<tosa::ConstOp>(param, param.getType(), attr);
       }

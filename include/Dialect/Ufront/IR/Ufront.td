@@ -379,6 +379,8 @@ def Ufront_CastOp : Ufront_Op<"cast"> {
 
 def Ufront_ReluOp : Ufront_ActivationOp<"relu">;
 def Ufront_SoftmaxOp : Ufront_ActivationOp<"softmax">;
+def Ufront_TanhOp : Ufront_ActivationOp<"tanh">;
+
 // def Ufront_GeluOp : Ufront_ActivationOp<"gelu">;
 def Ufront_SiluOp : Ufront_ActivationOp<"silu">;
 def Ufront_SigmoidOp : Ufront_ActivationOp<"sigmoid">;
