@@ -100,7 +100,23 @@ Value constantScalar(double value, Type elemTy, OpBuilder& builder) {
 
 DenseElementsAttr getDenseFloatAttr(double value, Type type,
                                     OpBuilder& builder) {
-  return DenseElementsAttr::get(type, builder.getF32FloatAttr(value));
+  return DenseElementsAttr::get(type, builder.getFloatAttr(type, value));
+}
+
+DenseElementsAttr getDenseIntegerAttr(int64_t value, Type type,
+                                      OpBuilder& builder) {
+  return DenseElementsAttr::get(type, builder.getIntegerAttr(type, value));
+}
+
+DenseElementsAttr getDenseElementsAttr(double value, Type type,
+                                       OpBuilder& builder) {
+  auto elemTy = cast<ShapedType>(type).getElementType();
+
+  if (isa<IntegerType>(elemTy)) {
+    return getDenseIntegerAttr(static_cast<int64_t>(value), type, builder);
+  }
+
+  return getDenseFloatAttr(value, type, builder);
 }
 
 SmallVector<int64_t> getIntValueFromArrayAttr(ArrayAttr array) {

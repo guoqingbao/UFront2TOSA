@@ -12,6 +12,10 @@ Value constantScalar(double value, Type elemTy, OpBuilder& builder);
 
 DenseElementsAttr getDenseFloatAttr(double value, Type type,
                                     OpBuilder& builder);
+DenseElementsAttr getDenseIntegerAttr(int64_t value, Type type,
+                                      OpBuilder& builder);
+DenseElementsAttr getDenseElementsAttr(double value, Type type,
+                                       OpBuilder& builder);
 
 SmallVector<int64_t> getIntValueFromArrayAttr(ArrayAttr array);
 std::optional<Value> getConstTensor(OpBuilder &rewriter, Operation *op,

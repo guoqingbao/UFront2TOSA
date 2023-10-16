@@ -541,22 +541,10 @@ LogicalResult ExpandConverter::matchAndRewrite(
   auto sizesVals = getIntValueFromArrayAttr(sizesAttr);
 
   auto input = expand.getInput();
-  auto inTy = input.getType();
-  auto inShape = inTy.getShape();
   auto outTy = expand.getType();
 
-  auto cstSize = SmallVector<int64_t>{inShape};
-  for (auto [i, dim] : enumerate(inShape)) {
-    if (dim == -1) {
-      continue;
-    }
-
-    cstSize[i] = dim;
-  }
-
-  auto cstType = RankedTensorType::get(cstSize, inTy.getElementType());
-  auto cstAttr = getDenseFloatAttr(1.0, cstType, rewriter);
-  auto cst = rewriter.create<tosa::ConstOp>(expand->getLoc(), cstType, cstAttr);
+  auto cstAttr = getDenseElementsAttr(1.0, outTy, rewriter);
+  auto cst = rewriter.create<tosa::ConstOp>(expand->getLoc(), outTy, cstAttr);
 
   rewriter.replaceOpWithNewOp<tosa::MulOp>(expand, outTy, input, cst, 0);
   return success();
