@@ -87,13 +87,14 @@ LogicalResult MultiheadAttentionConverter::matchAndRewrite(
 
   auto mask = mha.getMask();
   auto numHeads = static_cast<int64_t>(mha.getNumHeads());
+  auto weight_transposed = mha.getWeightTransposed();
 
   for (auto [i, val] : enumerate(qkv)) {
     if (weights[i]) {
       if (biases[i]) {
-        val = rewriter.create<LinearOp>(val.getLoc(), val.getType(), val, weights[i], biases[i]);
+        val = rewriter.create<LinearOp>(val.getLoc(), val.getType(), val, weights[i], biases[i], weight_transposed);
       } else {
-        val = rewriter.create<LinearOp>(val.getLoc(), val.getType(), val, weights[i], nullptr);
+        val = rewriter.create<LinearOp>(val.getLoc(), val.getType(), val, weights[i], nullptr, weight_transposed);
       }
     } else {
       val = Helper::linear(val, rewriter);
@@ -120,9 +121,9 @@ LogicalResult MultiheadAttentionConverter::matchAndRewrite(
   if (weight_o) {
     auto bias_o = mha.getBiasO();
     if (bias_o) {
-      res = rewriter.create<LinearOp>(res.getLoc(), res.getType(), res, weight_o, bias_o);
+      res = rewriter.create<LinearOp>(res.getLoc(), res.getType(), res, weight_o, bias_o, nullptr);
     } else {
-      res = rewriter.create<LinearOp>(res.getLoc(), res.getType(), res, weight_o, nullptr);
+      res = rewriter.create<LinearOp>(res.getLoc(), res.getType(), res, weight_o, nullptr, nullptr);
     }
   } else {
     res = Helper::linear(res, rewriter);

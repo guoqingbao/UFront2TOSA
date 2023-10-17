@@ -238,6 +238,7 @@ LogicalResult LinearConverter::matchAndRewrite(
   auto outTy = linear.getType();
   auto rank = inTy.getRank();
   auto elemTy = inTy.getElementType();
+  auto weight_transposed = linear.getWeightTransposed();
 
   auto shape = SmallVector<int64_t, 3>{inTy.getDimSize(rank - 1),
                                        outTy.getDimSize(rank - 1)};
@@ -256,7 +257,8 @@ LogicalResult LinearConverter::matchAndRewrite(
 
   auto weight = linear.getWeight();
   if (weight) {
-    weight = transpose(weight, {1, 0}, rewriter);
+    if (weight_transposed && weight_transposed.has_value() && weight_transposed.value())
+      weight = transpose(weight, {1, 0}, rewriter);
     if (shape[0] > 1) {
       auto empty = rewriter
                       .create<tensor::EmptyOp>(linear->getLoc(), ArrayRef{shape[0], shape[1], shape[2]}, inTy.getElementType())

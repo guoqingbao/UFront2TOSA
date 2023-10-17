@@ -114,7 +114,8 @@ def Ufront_LinearOp : Ufront_OpX<"linear"> {
     let arguments = (ins
         Ufront_Tensor: $input,
         Optional<Ufront_Tensor>: $weight,
-        Optional<Ufront_Tensor>: $bias
+        Optional<Ufront_Tensor>: $bias,
+        OptionalAttr<BoolAttr>: $weight_transposed
     );
 
     let results = (outs
@@ -248,7 +249,8 @@ def Ufront_MultiheadAttentionOp : Ufront_OpX<"multihead_attention"> {
         I64Attr: $embed_dim,
         I64Attr: $num_heads,
         F64Attr: $dropout,
-        BoolAttr: $batch_first
+        BoolAttr: $batch_first,
+        OptionalAttr<BoolAttr>: $weight_transposed
     );
 
     let results = (outs
