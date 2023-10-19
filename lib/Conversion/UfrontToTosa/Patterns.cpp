@@ -60,6 +60,7 @@ void populateConvertUfrontToTosaPatterns(RewritePatternSet& patterns) {
                SqrtConverter,
                NegConverter,
                ErfConverter,
+               PowConverter,
                StrueDivConverter,
                EmbeddingConverter,
                CastConverter>(patterns.getContext());
@@ -750,6 +751,16 @@ LogicalResult ErfConverter::matchAndRewrite(ErfOp erf,
 
   auto approximate = erf.getApproximate();
   rewriter.replaceOp(erf, approximateErfOp(rewriter, erf, erf.getInput()));
+  return success();
+}
+
+LogicalResult PowConverter::matchAndRewrite(PowOp pow,
+                                             PatternRewriter& rewriter) const {
+  auto pownum = pow.getPow();
+  auto powattr = getDenseFloatAttr(pownum.convertToDouble(), pow.getType(), rewriter);
+  auto pow_const = rewriter.create<tosa::ConstOp>(pow.getLoc(), pow.getType(), powattr);
+  rewriter.replaceOpWithNewOp<tosa::PowOp>(pow, pow.getType(),
+                                               pow.getInput(), pow_const);
   return success();
 }
 

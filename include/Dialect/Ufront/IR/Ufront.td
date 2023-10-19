@@ -240,10 +240,10 @@ def Ufront_MultiheadAttentionOp : Ufront_OpX<"multihead_attention"> {
         Optional<Ufront_Tensor2D>: $weightQ,
         Optional<Ufront_Tensor2D>: $weightK,
         Optional<Ufront_Tensor2D>: $weightV,
+        Optional<Ufront_Tensor2D>: $weightO,
         Optional<Ufront_Tensor1D>: $biasQ,
         Optional<Ufront_Tensor1D>: $biasK,
         Optional<Ufront_Tensor1D>: $biasV,
-        Optional<Ufront_Tensor2D>: $weightO,
         Optional<Ufront_Tensor1D>: $biasO,
         Optional<Ufront_Tensor3D>: $mask,
         I64Attr: $embed_dim,
@@ -338,6 +338,17 @@ def Ufront_ErfOp : Ufront_Op<"erf", [SameOperandsAndResultType]> {
     let arguments = (ins
         Ufront_Tensor: $input,
         BoolAttr: $approximate
+    );
+
+    let results = (outs
+        Ufront_Tensor: $output
+    );
+}
+
+def Ufront_PowOp : Ufront_Op<"pow", [SameOperandsAndResultType]> {
+    let arguments = (ins
+        Ufront_Tensor: $input,
+        F64Attr: $pow
     );
 
     let results = (outs

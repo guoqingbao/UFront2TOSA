@@ -123,6 +123,12 @@ class ErfConverter : public OpRewritePattern<ErfOp> {
                                 PatternRewriter& rewriter) const override;
 };
 
+class PowConverter : public OpRewritePattern<PowOp> {
+  using OpRewritePattern<PowOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(PowOp pow,
+                                PatternRewriter& rewriter) const override;
+};
+
 class SliceConverter : public OpRewritePattern<SliceOp> {
   using OpRewritePattern<SliceOp>::OpRewritePattern;
   LogicalResult matchAndRewrite(SliceOp slice,
