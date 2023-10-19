@@ -217,73 +217,122 @@ LogicalResult Conv2DConverter::matchAndRewrite(
   return success();
 }
 
-// Value norm(Value x, Value mean, Value var, Value eps, Value weight, Value bias,
-//            OpBuilder& builder) {
-//   auto loc = x.getLoc();
-//   auto type = x.getType();
+LogicalResult lowerLinear(LinearOp linear, PatternRewriter& rewriter) {
+  auto loc = linear->getLoc();
 
-//   auto sub = builder.create<tosa::SubOp>(loc, type, x, mean);
-//   auto add = builder.create<tosa::AddOp>(loc, type, var, eps);
-//   auto rsqrt = builder.create<tosa::RsqrtOp>(loc, type, add);
-//   auto shift = builder.getI32IntegerAttr(0);
-//   auto mul = builder.create<tosa::MulOp>(loc, type, sub, rsqrt, shift);
-//   auto weightProd = builder.create<tosa::MulOp>(loc, type, mul, weight, shift);
-//   return builder.create<tosa::AddOp>(loc, type, weightProd, bias);
-// }
+  auto input = linear.getInput();
+  auto inTy = input.getType();
+  auto inShape = inTy.getShape();
+
+  auto outTy = linear.getType();
+  auto outShape = outTy.getShape();
+
+  auto elemTy = inTy.getElementType();
+
+  // input (*, h_in) -> (1, prod(*), h_in)
+  SmallVector<int64_t, 3> inNewShape{1, 1, inShape.back()};
+  inNewShape[1] = std::accumulate(inShape.begin(), inShape.end() - 1, 1L,
+                                  std::multiplies<int64_t>());
+  auto newInput = reshape(input, inNewShape, rewriter);
+
+  // weight (h_in, h_out) -> (1, h_in, h_out)
+  auto weight = linear.getWeight();
+  if (weight == nullptr) {
+    SmallVector<int64_t, 2> weightShape{inShape.back(), outShape.back()};
+    auto elided = rewriter.create<ElidedOp>(loc, weightShape, elemTy);
+    elided->setAttr("init", rewriter.getStringAttr("linear"));
+    elided->setAttr("output_shape", rewriter.getI64ArrayAttr(outShape));
+
+    weight = elided.getResult();
+  }
+
+  auto weightTransposed = linear.getWeightTransposed();
+  if (weightTransposed.has_value() && weightTransposed.value()) {
+    weight = transpose(weight, {1, 0}, rewriter);
+  }
+
+  auto weightTy = weight.getType();
+  auto weightShape = weightTy.getShape();
+  SmallVector<int64_t, 3> weightNewShape{1, weightShape[0], weightShape[1]};
+  auto newWeight = reshape(weight, weightNewShape, rewriter);
+
+  // bias (h_out) -> (1, 1, h_out)
+  auto result = matmul(newInput, newWeight, rewriter);
+  auto bias = linear.getBias();
+  if (bias != nullptr) {
+    SmallVector<int64_t, 3> biasNewShape{1, 1, 1};
+    biasNewShape.back() = bias.getType().getShape().back();
+
+    auto newBias = reshape(bias, biasNewShape, rewriter);
+    result =
+        rewriter.create<tosa::AddOp>(loc, result.getType(), result, newBias);
+  }
+
+  // result (1, prod(*), h_out) -> (*, h_out)
+  auto newResult = reshape(result, outShape, rewriter);
+  rewriter.replaceOp(linear, newResult);
+  return success();
+}
 
 LogicalResult LinearConverter::matchAndRewrite(
     LinearOp linear, PatternRewriter& rewriter) const {
-  
-  auto input = linear.getInput();
-  auto inTy = input.getType();
-  auto outTy = linear.getType();
-  auto rank = inTy.getRank();
-  auto elemTy = inTy.getElementType();
-  auto weight_transposed = linear.getWeightTransposed();
+  // auto input = linear.getInput();
+  // auto inTy = input.getType();
+  // auto outTy = linear.getType();
+  // auto rank = inTy.getRank();
+  // auto elemTy = inTy.getElementType();
+  // auto weight_transposed = linear.getWeightTransposed();
 
-  auto shape = SmallVector<int64_t, 3>{inTy.getDimSize(rank - 1),
-                                       outTy.getDimSize(rank - 1)};
+  // auto shape = SmallVector<int64_t, 3>{inTy.getDimSize(rank - 1),
+  //                                      outTy.getDimSize(rank - 1)};
 
-  if (rank < 3) {
-    shape.insert(shape.begin(), 1);
-    auto inShape = SmallVector<int64_t>{inTy.getShape()};
-    while (inShape.size() != 3) {
-      inShape.insert(inShape.begin(), 1);
-    }
-    input = reshape(input, inShape, rewriter);
-  } else {
-    shape.insert(shape.begin(), inTy.getShape()[rank - 3]);
-    input = reshape(input, inTy.getShape().take_back(3), rewriter);
-  }
+  // if (rank < 3) {
+  //   shape.insert(shape.begin(), 1);
+  //   auto inShape = SmallVector<int64_t>{inTy.getShape()};
+  //   while (inShape.size() != 3) {
+  //     inShape.insert(inShape.begin(), 1);
+  //   }
+  //   input = reshape(input, inShape, rewriter);
+  // } else {
+  //   shape.insert(shape.begin(), inTy.getShape()[rank - 3]);
+  //   input = reshape(input, inTy.getShape().take_back(3), rewriter);
+  // }
 
-  auto weight = linear.getWeight();
-  if (weight) {
-    if (weight_transposed && weight_transposed.has_value() && weight_transposed.value())
-      weight = transpose(weight, {1, 0}, rewriter);
-    if (shape[0] > 1) {
-      auto empty = rewriter
-                      .create<tensor::EmptyOp>(linear->getLoc(), ArrayRef{shape[0], shape[1], shape[2]}, inTy.getElementType())
-                      .getResult();
-      weight = rewriter.create<linalg::BroadcastOp>(linear->getLoc(), weight, empty, ArrayRef{0L})->getResult(0); //Broadcast for batch matmul
-    } else {
-      weight = reshape(weight, shape, rewriter); //for batch matmul
-    }
-    auto result = matmul(input, weight, rewriter);
-    auto bias = linear.getBias();
-    if (bias) {
-      auto biased = rewriter.create<tosa::AddOp>(result.getLoc(), result.getType(), result, bias);
-      rewriter.replaceOp(linear, reshape(biased, outTy.getShape(), rewriter));
-    } else {
-      rewriter.replaceOp(linear, reshape(result, outTy.getShape(), rewriter));
-    }
-  } else {
-    auto weight = rewriter.create<ElidedOp>(linear->getLoc(), shape, elemTy);
-    weight->setAttr("init", rewriter.getStringAttr("linear"));
-    weight->setAttr("output_shape", rewriter.getI64ArrayAttr(outTy.getShape()));
-    auto result = matmul(input, weight, rewriter);
-    rewriter.replaceOp(linear, reshape(result, outTy.getShape(), rewriter));
-  }
-  return success();
+  // auto weight = linear.getWeight();
+  // if (weight) {
+  //   if (weight_transposed && weight_transposed.has_value() &&
+  //   weight_transposed.value())
+  //     weight = transpose(weight, {1, 0}, rewriter);
+  //   if (shape[0] > 1) {
+  //     auto empty = rewriter
+  //                     .create<tensor::EmptyOp>(linear->getLoc(),
+  //                     ArrayRef{shape[0], shape[1], shape[2]},
+  //                     inTy.getElementType()) .getResult();
+  //     weight = rewriter.create<linalg::BroadcastOp>(linear->getLoc(), weight,
+  //     empty, ArrayRef{0L})->getResult(0); //Broadcast for batch matmul
+  //   } else {
+  //     weight = reshape(weight, shape, rewriter); //for batch matmul
+  //   }
+  //   auto result = matmul(input, weight, rewriter);
+  //   auto bias = linear.getBias();
+  //   if (bias) {
+  //     auto biased = rewriter.create<tosa::AddOp>(result.getLoc(),
+  //     result.getType(), result, bias); rewriter.replaceOp(linear,
+  //     reshape(biased, outTy.getShape(), rewriter));
+  //   } else {
+  //     rewriter.replaceOp(linear, reshape(result, outTy.getShape(),
+  //     rewriter));
+  //   }
+  // } else {
+  //   auto weight = rewriter.create<ElidedOp>(linear->getLoc(), shape, elemTy);
+  //   weight->setAttr("init", rewriter.getStringAttr("linear"));
+  //   weight->setAttr("output_shape",
+  //   rewriter.getI64ArrayAttr(outTy.getShape())); auto result = matmul(input,
+  //   weight, rewriter); rewriter.replaceOp(linear, reshape(result,
+  //   outTy.getShape(), rewriter));
+  // }
+  // return success();
+  return lowerLinear(linear, rewriter);
 }
 
 LogicalResult maxPool2D(Pool2DOp pool, PatternRewriter& rewriter) {
