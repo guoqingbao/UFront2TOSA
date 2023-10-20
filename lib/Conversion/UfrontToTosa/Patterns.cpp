@@ -483,6 +483,10 @@ LogicalResult avgPool2D(Pool2DOp pool, PatternRewriter& rewriter) {
 
   auto newRes = rewriter.create<tosa::AvgPool2dOp>(
       pool->getLoc(), newResType, transposed, kernelAttr, strideAttr, padAttr);
+  auto newResTy = cast<TensorType>(newRes.getType());
+  auto elemTy = newResTy.getElementType();
+  newRes->setAttr("acc_type", TypeAttr::get(elemTy));
+
   rewriter.replaceOp(pool, transpose(newRes, {0, 3, 1, 2}, rewriter));
 
   return success();
