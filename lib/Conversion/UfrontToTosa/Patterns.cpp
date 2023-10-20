@@ -395,9 +395,13 @@ LogicalResult adaptivePool2DAvg(Pool2DOp pool, PatternRewriter& rewriter) {
   if (tp.isF16()) {
     mlir::FloatType destType = mlir::FloatType::getF32(rewriter.getContext());
     transposed = rewriter.create<tosa::CastOp>(pool->getLoc(), destType, transposed);
-  } 
+  }
 
-  auto pooled = rewriter.create<tosa::AvgPool2dOp>(pool->getLoc(), newType, transposed, kernel, stride, padding); 
+  auto pooled = rewriter.create<tosa::AvgPool2dOp>(
+      pool->getLoc(), newType, transposed, kernel, stride, padding);
+  auto poolTy = cast<TensorType>(pooled.getType());
+  auto elemTy = poolTy.getElementType();
+  pooled->setAttr("acc_type", TypeAttr::get(elemTy));
 
   if (tp.isF16()) {
     mlir::FloatType destType = mlir::FloatType::getF16(rewriter.getContext());
