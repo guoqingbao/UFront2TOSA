@@ -100,12 +100,16 @@ Value constantScalar(double value, Type elemTy, OpBuilder& builder) {
 
 DenseElementsAttr getDenseFloatAttr(double value, Type type,
                                     OpBuilder& builder) {
-  return DenseElementsAttr::get(type, builder.getFloatAttr(type, value));
+  auto tensorTy = cast<TensorType>(type);
+  auto elemTy = tensorTy.getElementType();
+  return DenseElementsAttr::get(type, builder.getFloatAttr(elemTy, value));
 }
 
 DenseElementsAttr getDenseIntegerAttr(int64_t value, Type type,
                                       OpBuilder& builder) {
-  return DenseElementsAttr::get(type, builder.getIntegerAttr(type, value));
+  auto tensorTy = cast<TensorType>(type);
+  auto elemTy = tensorTy.getElementType();
+  return DenseElementsAttr::get(type, builder.getIntegerAttr(elemTy, value));
 }
 
 DenseElementsAttr getDenseElementsAttr(double value, Type type,
