@@ -390,6 +390,18 @@ def Ufront_CastOp : Ufront_Op<"cast"> {
     );
 }
 
+def Ufront_SsubOp : Ufront_Op<"ssub"> {
+    let arguments = (ins
+        Ufront_Tensor: $input,
+        F64Attr: $scalar,
+        StrAttr: $scalar_position
+    );
+
+    let results = (outs
+        Ufront_Tensor: $output
+    );
+}
+
 def Ufront_ReluOp : Ufront_ActivationOp<"relu">;
 def Ufront_SoftmaxOp : Ufront_ActivationOp<"softmax">;
 def Ufront_TanhOp : Ufront_ActivationOp<"tanh">;
@@ -407,7 +419,7 @@ def Ufront_SubtractOp : Ufront_BinaryOp<"subtract">;
 def Ufront_MatmulOp : Ufront_BinaryOp<"matmul">;
 
 def Ufront_SaddOp : Ufront_BinaryScalarOp<"sadd">;
-def Ufront_SsubOp : Ufront_BinaryScalarOp<"ssub">;
+// def Ufront_SsubOp : Ufront_BinaryScalarOp<"ssub">;
 def Ufront_SmultiplyOp : Ufront_BinaryScalarOp<"smultiply">;
 def Ufront_StrueDivOp : Ufront_BinaryScalarOp<"struediv">;
 

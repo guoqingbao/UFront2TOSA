@@ -21,8 +21,16 @@ LogicalResult SaddConverter::matchAndRewrite(SaddOp sadd,
 LogicalResult SsubConverter::matchAndRewrite(SsubOp ssub,
                                              PatternRewriter& rewriter) const {
   auto scalar = getScalarTensor(ssub.getScalar().convertToDouble(), rewriter);
-  rewriter.replaceOpWithNewOp<tosa::SubOp>(ssub, ssub.getType(),
+  auto scalar_position = ssub.getScalarPosition();
+  
+  if (scalar_position == "LEFT") {
+      rewriter.replaceOpWithNewOp<tosa::SubOp>(ssub, ssub.getType(),
+                                            scalar, ssub.getInput());
+  } else {
+      rewriter.replaceOpWithNewOp<tosa::SubOp>(ssub, ssub.getType(),
                                            ssub.getInput(), scalar);
+  }
+
   return success();
 };
 
