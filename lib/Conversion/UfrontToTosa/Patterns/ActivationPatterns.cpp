@@ -137,7 +137,9 @@ struct GeluHelper {
     Value oneHalf = getConstTensor(rewriter, op, 0.5).value();
     Value normalCdf = rewriter.create<tosa::MulOp>(loc, outType, oneHalf,
                                                   erfPlus1, /*shift=*/0);
-    return normalCdf;
+    // return normalCdf;
+    auto result = rewriter.create<tosa::MulOp>(loc, outType, normalCdf, x, 0);
+    return result;
   }
 
   static Value gelu(Operation *op, Value x, OpBuilder& builder, bool approximate) {

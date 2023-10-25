@@ -3,6 +3,7 @@
 #include <functional>
 #include <numeric>
 
+#include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/IR/BuiltinAttributes.h"
 
 namespace mlir {
@@ -151,46 +152,51 @@ Value approximateErfOp(OpBuilder &rewriter,
     //
     // Erf = 1 - 1 / (1 + a1X + a2X + a3X + a4X)^4
 
-    auto outType = x.getType().cast<TensorType>();
-    auto loc = op->getLoc();
-    auto absX = rewriter.create<tosa::AbsOp>(loc, outType, x);
-    auto zero = getConstTensor(rewriter, op, 0).value();
-    auto one = getConstTensor(rewriter, op, 1).value();
+  return rewriter.create<math::ErfOp>(op->getLoc(), x);
 
-    auto a1 = getConstTensor(rewriter, op, 0.278393).value();
-    auto a1X = rewriter.create<tosa::MulOp>(loc, outType, a1, absX, /*shift=*/0);
-    auto sum = rewriter.create<tosa::AddOp>(loc, outType, a1X, one);
+  //  auto outType = x.getType().cast<TensorType>();
+  // auto loc = op->getLoc();
+  // auto absX = rewriter.create<tosa::AbsOp>(loc, outType, x);
+  // auto zero = getConstTensor(rewriter, op, 0).value();
+  // auto one = getConstTensor(rewriter, op, 1).value();
 
-    auto a2 = getConstTensor(rewriter, op, 0.230389).value();
-    auto x2 = rewriter.create<tosa::MulOp>(loc, outType, absX, absX, /*shift=*/0);
-    auto a2X = rewriter.create<tosa::MulOp>(loc, outType, a2, x2, /*shift=*/0);
-    sum = rewriter.create<tosa::AddOp>(loc, outType, sum, a2X);
+  // auto a1 = getConstTensor(rewriter, op, 0.278393).value();
+  // auto a1X = rewriter.create<tosa::MulOp>(loc, outType, a1, absX,
+  // /*shift=*/0); auto sum = rewriter.create<tosa::AddOp>(loc, outType, a1X,
+  // one);
 
-    auto a3 = getConstTensor(rewriter, op, 0.000972).value();
-    auto x3 = rewriter.create<tosa::MulOp>(loc, outType, x2, absX, /*shift=*/0);
-    auto a3X = rewriter.create<tosa::MulOp>(loc, outType, a3, x3, /*shift=*/0);
-    sum = rewriter.create<tosa::AddOp>(loc, outType, sum, a3X);
+  // auto a2 = getConstTensor(rewriter, op, 0.230389).value();
+  // auto x2 = rewriter.create<tosa::MulOp>(loc, outType, absX, absX,
+  // /*shift=*/0); auto a2X = rewriter.create<tosa::MulOp>(loc, outType, a2, x2,
+  // /*shift=*/0); sum = rewriter.create<tosa::AddOp>(loc, outType, sum, a2X);
 
-    auto a4 = getConstTensor(rewriter, op, 0.078108).value();
-    auto x4 = rewriter.create<tosa::MulOp>(loc, outType, x3, absX, /*shift=*/0);
-    auto a4X = rewriter.create<tosa::MulOp>(loc, outType, a4, x4, /*shift=*/0);
-    sum = rewriter.create<tosa::AddOp>(loc, outType, sum, a4X);
+  // auto a3 = getConstTensor(rewriter, op, 0.000972).value();
+  // auto x3 = rewriter.create<tosa::MulOp>(loc, outType, x2, absX,
+  // /*shift=*/0); auto a3X = rewriter.create<tosa::MulOp>(loc, outType, a3, x3,
+  // /*shift=*/0); sum = rewriter.create<tosa::AddOp>(loc, outType, sum, a3X);
 
-    auto rcprl = rewriter.create<tosa::ReciprocalOp>(loc, outType, sum);
-    auto rcprl2 =
-        rewriter.create<tosa::MulOp>(loc, outType, rcprl, rcprl, /*shift=*/0);
-    auto rcprl4 =
-        rewriter.create<tosa::MulOp>(loc, outType, rcprl2, rcprl2, /*shift=*/0);
-    auto erf = rewriter.create<tosa::SubOp>(loc, outType, one, rcprl4);
+  // auto a4 = getConstTensor(rewriter, op, 0.078108).value();
+  // auto x4 = rewriter.create<tosa::MulOp>(loc, outType, x3, absX,
+  // /*shift=*/0); auto a4X = rewriter.create<tosa::MulOp>(loc, outType, a4, x4,
+  // /*shift=*/0); sum = rewriter.create<tosa::AddOp>(loc, outType, sum, a4X);
 
-    // Deal with negative x.
-    auto cond = rewriter.create<tosa::GreaterEqualOp>(
-        loc,
-        RankedTensorType::get(outType.getShape(), rewriter.getIntegerType(1)), x,
-        zero);
-    auto negateErf = rewriter.create<tosa::NegateOp>(loc, outType, erf);
+  // auto rcprl = rewriter.create<tosa::ReciprocalOp>(loc, outType, sum);
+  // auto rcprl2 =
+  //     rewriter.create<tosa::MulOp>(loc, outType, rcprl, rcprl, /*shift=*/0);
+  // auto rcprl4 =
+  //     rewriter.create<tosa::MulOp>(loc, outType, rcprl2, rcprl2,
+  //     /*shift=*/0);
+  // auto erf = rewriter.create<tosa::SubOp>(loc, outType, one, rcprl4);
 
-    return rewriter.create<tosa::SelectOp>(loc, outType, cond, erf, negateErf);
+  // // Deal with negative x.
+  // auto cond = rewriter.create<tosa::GreaterEqualOp>(
+  //     loc,
+  //     RankedTensorType::get(outType.getShape(), rewriter.getIntegerType(1)),
+  //     x, zero);
+  // auto negateErf = rewriter.create<tosa::NegateOp>(loc, outType, erf);
+
+  // return rewriter.create<tosa::SelectOp>(loc, outType, cond, erf,
+  // negateErf);
   }
 
 }  // namespace ufront
