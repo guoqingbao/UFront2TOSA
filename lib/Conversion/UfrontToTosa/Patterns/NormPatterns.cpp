@@ -47,14 +47,14 @@ Optional<Value> norm(OpBuilder& builder, Value tensor, ArrayRef<int64_t> dims,
 
   auto dif = builder.create<tosa::SubOp>(loc, type, tensor, *meanX);
 
-  auto variance = mean(square(dif), dims, builder);
-
+  auto variance = *mean(square(dif), dims, builder);
+  auto tp = variance.getType();
   // auto sqrOfMeanX = square(*meanX);
   // auto varX = builder.create<tosa::SubOp>(loc, type, *meanOfSqrX, sqrOfMeanX);
 
-  auto eps = constantScalar(EPS, getElementTypeOrSelf(type), builder);
-  auto add = builder.create<tosa::AddOp>(loc, type, *variance, eps);
-  auto rsqrt = builder.create<tosa::RsqrtOp>(loc, type, add);
+  auto eps = constantScalar(EPS, getElementTypeOrSelf(tp), builder);
+  auto add = builder.create<tosa::AddOp>(loc, tp, variance, eps);
+  auto rsqrt = builder.create<tosa::RsqrtOp>(loc, tp, add);
 
   return builder.create<tosa::MulOp>(loc, type, dif, rsqrt, shift);
 }
